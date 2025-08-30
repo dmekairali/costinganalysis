@@ -13,7 +13,17 @@ function initializeDashboard() {
             costingDataTable = $('#costing-table').DataTable({
                 "scrollY": "500px",
                 "scrollCollapse": true,
-                "paging": false
+        "paging": false,
+        "fixedHeader": true,
+        "createdRow": function( row, data, dataIndex ) {
+            // Add section dividers
+            $(row).find('td:eq(13)').addClass('section-divider');
+            $(row).find('td:eq(22)').addClass('section-divider');
+            // Add class to remarks columns
+            $(row).find('td:eq(12)').addClass('remarks-cell');
+            $(row).find('td:eq(21)').addClass('remarks-cell');
+            $(row).find('td:eq(30)').addClass('remarks-cell');
+        }
             });
             populateTable();
             updateMLInsights();
@@ -42,29 +52,54 @@ function populateTable() {
             `<div class="cost-cell">₹${item.ca.last3Prod.toFixed(2)} ${getTrendIndicator(item.ca.last3Prod, item.ca.benchmark)}</div>`,
             `<div class="cost-cell">₹${item.ca.last3Month.toFixed(2)} ${getTrendIndicator(item.ca.last3Month, item.ca.benchmark)}</div>`,
             `<div class="cost-cell">₹${item.ca.last12Month.toFixed(2)} ${getTrendIndicator(item.ca.last12Month, item.ca.benchmark)}</div>`,
-            `<div class="cost-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'ca.newBenchmark')">₹${item.ca.newBenchmark.toFixed(2)} ${getDeviationIndicator(item.ca.newBenchmark, item.ca.benchmark)}</div>`,
-            `<div class="status-cell ${getStatusClass(item.ca.status)}" onclick="editStatus(${index}, 'ca')">${formatStatus(item.ca.status)}</div>`,
-            `<div class="cost-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'toc.correct')">₹${item.toc.correct.toFixed(2)}</div>`,
+            `<div class="cost-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'ca.newBenchmark')">₹${item.ca.newBenchmark.toFixed(2)}</div>`,
+            `<div>${calculateDeviation(item.ca.newBenchmark, item.ca.benchmark)}</div>`,
+            `<div class="status-cell editable-cell" onclick="editStatus(${index}, 'ca')">${formatStatus(item.ca.status)}</div>`,
+            `<div class="remarks-cell">${item.ca.correctiveRemarks}</div>`,
+            `<div class="cost-cell editable-cell section-divider" onclick="makeCellEditable(this, ${index}, 'toc.correct')">₹${item.toc.correct.toFixed(2)}</div>`,
             `<div class="cost-cell">₹${item.toc.benchmark.toFixed(2)}</div>`,
             `<div class="cost-cell">₹${item.toc.last3Prod.toFixed(2)} ${getTrendIndicator(item.toc.last3Prod, item.toc.benchmark)}</div>`,
             `<div class="cost-cell">₹${item.toc.last3Month.toFixed(2)} ${getTrendIndicator(item.toc.last3Month, item.toc.benchmark)}</div>`,
             `<div class="cost-cell">₹${item.toc.last12Month.toFixed(2)} ${getTrendIndicator(item.toc.last12Month, item.toc.benchmark)}</div>`,
-            `<div class="cost-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'toc.newBenchmark')">₹${item.toc.newBenchmark.toFixed(2)} ${getDeviationIndicator(item.toc.newBenchmark, item.toc.benchmark)}</div>`,
-            `<div class="status-cell ${getStatusClass(item.toc.status)}" onclick="editStatus(${index}, 'toc')">${formatStatus(item.toc.status)}</div>`,
-            `<div class="time-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'time.correct')">${item.time.correct}</div>`,
+            `<div class="cost-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'toc.newBenchmark')">₹${item.toc.newBenchmark.toFixed(2)}</div>`,
+            `<div>${calculateDeviation(item.toc.newBenchmark, item.toc.benchmark)}</div>`,
+            `<div class="status-cell editable-cell" onclick="editStatus(${index}, 'toc')">${formatStatus(item.toc.status)}</div>`,
+            `<div class="remarks-cell">${item.toc.correctiveRemarks}</div>`,
+            `<div class="time-cell editable-cell section-divider" onclick="makeCellEditable(this, ${index}, 'time.correct')">${item.time.correct}</div>`,
             `<div class="time-cell">${item.time.benchmark}</div>`,
             `<div class="time-cell">${item.time.last3Prod}</div>`,
             `<div class="time-cell">${item.time.last3Month}</div>`,
             `<div class="time-cell">${item.time.last12Month}</div>`,
             `<div class="time-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'time.newBenchmark')">${item.time.newBenchmark}</div>`,
-            `<div class="status-cell ${getStatusClass(item.time.status)}" onclick="editStatus(${index}, 'time')">${formatStatus(item.time.status)}</div>`,
+            `<div>${calculateDeviation(item.time.newBenchmark, item.time.benchmark)}</div>`,
+            `<div class="status-cell editable-cell" onclick="editStatus(${index}, 'time')">${formatStatus(item.time.status)}</div>`,
+            `<div class="remarks-cell">${item.time.correctiveRemarks}</div>`,
         ];
     });
     costingDataTable.rows.add(rows).draw();
 }
 
 // Helper functions
+function timeToSeconds(timeStr) {
+    if (!timeStr || typeof timeStr !== 'string') return 0;
+    const parts = timeStr.split(':');
+    if (parts.length !== 3) return 0;
+    const [hours, minutes, seconds] = parts.map(Number);
+    return (hours * 3600) + (minutes * 60) + seconds;
+}
+
+function calculateDeviation(newBenchmark, benchmark) {
+    if (typeof newBenchmark === 'string' && newBenchmark.includes(':')) {
+        newBenchmark = timeToSeconds(newBenchmark);
+        benchmark = timeToSeconds(benchmark);
+    }
+    if (benchmark === 0) return 'N/A';
+    const deviation = ((newBenchmark - benchmark) / benchmark) * 100;
+    return deviation.toFixed(2) + '%';
+}
+
 function getTrendIndicator(current, benchmark) {
+    if (benchmark === 0) return '';
     const variance = ((current - benchmark) / benchmark) * 100;
     if (Math.abs(variance) < 2) return '';
     return variance > 0 ? '<span class="trend-indicator trend-up">↑</span>' : '<span class="trend-indicator trend-down">↓</span>';
@@ -100,7 +135,10 @@ function formatStatus(status) {
 
 // Edit functionality
 function makeCellEditable(cell, rowIndex, fieldPath) {
-    const currentValue = getNestedValue(costingData[rowIndex], fieldPath);
+    let currentValue = getNestedValue(costingData[rowIndex], fieldPath);
+    if (typeof currentValue === 'string') {
+        currentValue = currentValue.replace(/[^0-9.-]/g, '');
+    }
     $(cell).html(`<input type='text' value='${currentValue}'/>`).find('input').focus()
         .on('blur', function() {
             saveCell(this, rowIndex, fieldPath);
@@ -113,21 +151,57 @@ function makeCellEditable(cell, rowIndex, fieldPath) {
 }
 
 function saveCell(input, rowIndex, fieldPath) {
-    const newValue = $(input).val();
+    let newValue = $(input).val();
+
+    // If the field is a cost field, parse it as a float
+    if (fieldPath.toLowerCase().includes('cost') || fieldPath.toLowerCase().includes('benchmark')) {
+        newValue = parseFloat(newValue.replace(/[^0-9.-]/g, ''));
+        if (isNaN(newValue)) {
+            showNotification('Invalid number format.', 'error');
+            populateTable(); // Redraw to revert
+            return;
+        }
+    }
+
     setNestedValue(costingData[rowIndex], fieldPath, newValue);
-    populateTable();
-    updateMLInsights();
-    showNotification('Data updated successfully!', 'success');
+
+    // Show a loading indicator on the cell
+    $(input).parent().addClass('saving');
+
+    google.script.run
+        .withSuccessHandler(() => {
+            // Success! Remove loading indicator and redraw table
+            $(input).parent().removeClass('saving');
+            populateTable();
+            updateMLInsights();
+            showNotification('Cell updated successfully!', 'success');
+        })
+        .withFailureHandler(error => {
+            // Failed to save, revert the change and show an error
+            console.error('Error updating cell:', error);
+            $(input).parent().removeClass('saving');
+            showNotification('Failed to update cell.', 'error');
+        })
+        .updateSingleCell(costingData[rowIndex].productionId, fieldPath, newValue);
 }
 
 function editStatus(rowIndex, section) {
     const currentStatus = costingData[rowIndex][section].status;
     const newStatus = currentStatus === 'update' ? 'no_need' : 'update';
     
-    costingData[rowIndex][section].status = newStatus;
-    populateTable();
-    updateMLInsights();
-    showNotification(`Status updated to: ${formatStatus(newStatus)}`, 'success');
+    google.script.run
+        .withSuccessHandler(() => {
+            costingData[rowIndex][section].status = newStatus;
+            populateTable();
+            updateMLInsights();
+            showNotification('Status updated successfully!', 'success');
+        })
+        .withFailureHandler(error => {
+            console.error('Error updating status:', error);
+            populateTable(); // Redraw to revert optimistic UI change
+            showNotification('Failed to update status.', 'error');
+        })
+        .updateSingleCell(costingData[rowIndex].productionId, `${section}.status`, newStatus);
 }
 
 function getNestedValue(obj, path) {
@@ -523,20 +597,6 @@ function exportData(format) {
         .exportData(costingData, format);
 }
 
-function bulkUpdateBenchmarks() {
-    const confirmed = confirm('Are you sure you want to bulk update all benchmark costs?');
-    if (confirmed) {
-        costingData.forEach(item => {
-            item.ca.benchmark = item.ca.newBenchmark;
-            item.toc.benchmark = item.toc.newBenchmark;
-            item.ca.status = 'approved';
-            item.toc.status = 'approved';
-        });
-        populateTable();
-        updateMLInsights();
-        showNotification('Bulk benchmark update completed!', 'success');
-    }
-}
 
 // Utility functions
 function showNotification(message, type = 'info') {

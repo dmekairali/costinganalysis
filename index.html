@@ -5,8 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Advanced Costing Review Dashboard</title>
     <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.11.5/css/jquery.dataTables.css">
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/fixedheader/3.2.2/css/fixedHeader.dataTables.min.css">
     <script type="text/javascript" charset="utf8" src="https://code.jquery.com/jquery-3.5.1.js"></script>
     <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.js"></script>
+    <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/fixedheader/3.2.2/js/dataTables.fixedHeader.min.js"></script>
     <?!= HtmlService.createHtmlOutputFromFile('styles').getContent(); ?>
 </head>
 <body>
@@ -82,9 +84,8 @@
             <div class="controls-row">
                 <button class="btn btn-primary" onclick="runAIAnalysis()">🤖 Run AI Cost Analysis</button>
                 <button class="btn btn-primary" onclick="generateSmartRecommendations()">💡 Smart Recommendations</button>
-                <button class="btn btn-primary" onclick="bulkUpdateBenchmarks()">🔄 Bulk Update Benchmarks</button>
                 <button class="btn btn-secondary" onclick="importFromGoogleSheets()">📥 Load from Sheets</button>
-                <button class="btn btn-secondary" onclick="saveToGoogleSheets()">💾 Save to Sheets</button>
+                <button class="btn btn-primary" onclick="saveToGoogleSheets()">💾 Save All to Sheets</button>
             </div>
         </div>
 
@@ -98,9 +99,9 @@
                             <th rowspan="2">Production ID</th>
                             <th rowspan="2">Package</th>
                             <th rowspan="2">Qty</th>
-                            <th colspan="7" class="section-divider">CA Cost Analysis (₹/Unit)</th>
-                            <th colspan="7" class="section-divider">TOC Cost Analysis (₹/Unit)</th>
-                            <th colspan="7" class="section-divider">Time Analysis</th>
+                            <th colspan="9" class="section-divider">CA Cost Analysis (₹/Unit)</th>
+                            <th colspan="9" class="section-divider">TOC Cost Analysis (₹/Unit)</th>
+                            <th colspan="9" class="section-divider">Time Analysis</th>
                         </tr>
                         <tr>
                             <!-- CA Cost columns -->
@@ -110,7 +111,9 @@
                             <th>Last 3 Month Avg</th>
                             <th>Last 12 Month Avg</th>
                             <th data-field-path="ca.newBenchmark">New Benchmark</th>
+                            <th>Deviation %</th>
                             <th data-section="ca">Status</th>
+                            <th>CA Corrective Remarks</th>
                             
                             <!-- TOC Cost columns -->
                             <th class="section-divider" data-field-path="toc.correct">Correct TOC</th>
@@ -119,7 +122,9 @@
                             <th>Last 3 Month Avg</th>
                             <th>Last 12 Month Avg</th>
                             <th data-field-path="toc.newBenchmark">New Benchmark</th>
+                            <th>Deviation %</th>
                             <th data-section="toc">Status</th>
+                            <th>TOC Corrective Remarks</th>
                             
                             <!-- Time columns -->
                             <th class="section-divider" data-field-path="time.correct">Correct Time</th>
@@ -128,7 +133,9 @@
                             <th>Last 3 Month Avg</th>
                             <th>Last 12 Month Avg</th>
                             <th data-field-path="time.newBenchmark">New Benchmark</th>
+                            <th>Deviation %</th>
                             <th data-section="time">Status</th>
+                            <th>Time Corrective Remarks</th>
                         </tr>
                     </thead>
                     <tbody id="table-body">

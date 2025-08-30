@@ -48,7 +48,10 @@ const CONFIG = {
     timeLast3Month: 'DO',
     timeLast12Month: 'DP',
     timeNewBenchmark: 'DQ',
-    timeStatus: 'DR'
+    timeStatus: 'DR',
+    caCorrectiveRemarks: 'BM',
+    tocCorrectiveRemarks: 'BI',
+    timeCorrectiveRemarks: 'BP'
   },
   
   // OpenAI configuration
@@ -83,10 +86,6 @@ function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
-
-/**
- * Simplified import function with direct filtering
- */
 function importCostingData() {
   try {
     const sheet = getDataSheet();
@@ -95,10 +94,7 @@ function importCostingData() {
     const lastRow = sheet.getLastRow();
     const lastCol = sheet.getLastColumn();
     
-    console.log(`Sheet dimensions: ${lastRow} rows, ${lastCol} columns`);
-    
     if (lastRow < CONFIG.DATA_START_ROW) {
-      console.log('No data rows found');
       return [];
     }
     
@@ -106,26 +102,20 @@ function importCostingData() {
     let headers = [];
     if (CONFIG.HEADER_ROW && CONFIG.HEADER_ROW <= lastRow && CONFIG.HEADER_ROW > 0) {
       headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
-      console.log('Headers found:', headers.slice(0, 10));
     }
     
     // Calculate data range dimensions
     const dataRows = lastRow - CONFIG.DATA_START_ROW + 1;
     
     if (dataRows <= 0) {
-      console.log('No data rows to process');
       return [];
     }
     
     // Get data starting from DATA_START_ROW
-    console.log(`Getting data range: Row ${CONFIG.DATA_START_ROW}, Col 1, ${dataRows} rows, ${lastCol} cols`);
     const dataRange = sheet.getRange(CONFIG.DATA_START_ROW, 1, dataRows, lastCol);
     const rawData = dataRange.getValues();
     
-    console.log(`Processing ${rawData.length} raw data rows`);
-    
     const costingData = [];
-    let skippedRows = 0;
     
     for (let i = 0; i < rawData.length; i++) {
       const row = rawData[i];
@@ -145,7 +135,6 @@ function importCostingData() {
         const conditionCV = columnCV === null || columnCV === undefined || columnCV === '';
         
         if (!(conditionB && conditionCU && conditionCV)) {
-          skippedRows++;
           continue;
         }
         
@@ -154,17 +143,13 @@ function importCostingData() {
         costingData.push(item);
         
       } catch (error) {
-        console.error(`Error processing row ${rowIndex}:`, error.message);
-        skippedRows++;
+        // Continue to next row if there is an error
       }
     }
-    
-    console.log(`Import completed: ${costingData.length} items imported, ${skippedRows} rows skipped`);
     
     return costingData;
     
   } catch (error) {
-    console.error('Error importing data:', error);
     throw new Error('Failed to import data from Google Sheets: ' + error.message);
   }
 }
@@ -232,7 +217,8 @@ function createItemFromData(data) {
       last3Month: parseFloat(data.caLast3Month) || 0,
       last12Month: parseFloat(data.caLast12Month) || 0,
       newBenchmark: parseFloat(data.caNewBenchmark) || 0,
-      status: normalizeStatus(data.caStatus)
+      status: normalizeStatus(data.caStatus),
+      correctiveRemarks: data.caCorrectiveRemarks || ''
     },
     toc: {
       correct: parseFloat(data.tocCorrect) || 0,
@@ -241,7 +227,8 @@ function createItemFromData(data) {
       last3Month: parseFloat(data.tocLast3Month) || 0,
       last12Month: parseFloat(data.tocLast12Month) || 0,
       newBenchmark: parseFloat(data.tocNewBenchmark) || 0,
-      status: normalizeStatus(data.tocStatus)
+      status: normalizeStatus(data.tocStatus),
+      correctiveRemarks: data.tocCorrectiveRemarks || ''
     },
     time: {
       correct: normalizeTime(data.timeCorrect),
@@ -250,7 +237,8 @@ function createItemFromData(data) {
       last3Month: normalizeTime(data.timeLast3Month),
       last12Month: normalizeTime(data.timeLast12Month),
       newBenchmark: normalizeTime(data.timeNewBenchmark),
-      status: normalizeStatus(data.timeStatus)
+      status: normalizeStatus(data.timeStatus),
+      correctiveRemarks: data.timeCorrectiveRemarks || ''
     }
   };
 }
@@ -264,7 +252,7 @@ function normalizeStatus(status) {
   if (statusStr.includes('no need')) return 'no_need';
   if (statusStr.includes('update benchmark cost')) return 'update';
   
-  return 'update'; // Default to 'update'
+  return 'no_need'; // Default to 'no_need'
 }
 
 /**
@@ -338,11 +326,9 @@ function getConfigurationTemplate() {
 
 
 /**
- * Save costing data to Google Sheets by updating individual cells.
- * Note: This method can be slow if updating a large number of rows simultaneously,
- * as it makes multiple write calls to the Google Sheets API.
+ * Save costing data to Google Sheets
  */
-function saveCostingData(updatedCostingData) {
+function saveCostingData(costingData) {
   try {
     const sheet = getDataSheet();
     const range = sheet.getDataRange();
@@ -351,31 +337,75 @@ function saveCostingData(updatedCostingData) {
     // Create a map of production IDs to row index for faster lookups
     const productionIdToRowIndex = {};
     for (let i = CONFIG.HEADER_ROW; i < values.length; i++) {
-      const productionId = values[i][columnLetterToIndex(CONFIG.COLUMN_MAPPING.productionId) - 1];
-      if (productionId) {
-        productionIdToRowIndex[productionId] = i + 1; // Use 1-based index for getRange
-      }
+        const productionId = values[i][columnLetterToIndex(CONFIG.COLUMN_MAPPING.productionId) - 1];
+        if (productionId) {
+            productionIdToRowIndex[productionId] = i;
+        }
     }
 
-    updatedCostingData.forEach(item => {
-      const rowIndex = productionIdToRowIndex[item.productionId];
-      if (rowIndex !== undefined) {
-        // Update the 6 specific columns for the given row
-        sheet.getRange(rowIndex, columnLetterToIndex(CONFIG.COLUMN_MAPPING.caNewBenchmark)).setValue(item.ca.newBenchmark);
-        sheet.getRange(rowIndex, columnLetterToIndex(CONFIG.COLUMN_MAPPING.caStatus)).setValue(item.ca.status);
-        sheet.getRange(rowIndex, columnLetterToIndex(CONFIG.COLUMN_MAPPING.tocNewBenchmark)).setValue(item.toc.newBenchmark);
-        sheet.getRange(rowIndex, columnLetterToIndex(CONFIG.COLUMN_MAPPING.tocStatus)).setValue(item.toc.status);
-        sheet.getRange(rowIndex, columnLetterToIndex(CONFIG.COLUMN_MAPPING.timeNewBenchmark)).setValue(item.time.newBenchmark);
-        sheet.getRange(rowIndex, columnLetterToIndex(CONFIG.COLUMN_MAPPING.timeStatus)).setValue(item.time.status);
-      }
+    costingData.forEach(item => {
+        const rowIndex = productionIdToRowIndex[item.productionId];
+        if (rowIndex !== undefined) {
+            const row = values[rowIndex];
+            // Update the values in the row based on the item from the client
+            row[columnLetterToIndex(CONFIG.COLUMN_MAPPING.caNewBenchmark) - 1] = item.ca.newBenchmark;
+            row[columnLetterToIndex(CONFIG.COLUMN_MAPPING.caStatus) - 1] = item.ca.status;
+            row[columnLetterToIndex(CONFIG.COLUMN_MAPPING.tocNewBenchmark) - 1] = item.toc.newBenchmark;
+            row[columnLetterToIndex(CONFIG.COLUMN_MAPPING.tocStatus) - 1] = item.toc.status;
+            row[columnLetterToIndex(CONFIG.COLUMN_MAPPING.timeNewBenchmark) - 1] = item.time.newBenchmark;
+            row[columnLetterToIndex(CONFIG.COLUMN_MAPPING.timeStatus) - 1] = item.time.status;
+            row[columnLetterToIndex(CONFIG.COLUMN_MAPPING.caCorrectiveRemarks) - 1] = item.ca.correctiveRemarks;
+            row[columnLetterToIndex(CONFIG.COLUMN_MAPPING.tocCorrectiveRemarks) - 1] = item.toc.correctiveRemarks;
+            row[columnLetterToIndex(CONFIG.COLUMN_MAPPING.timeCorrectiveRemarks) - 1] = item.time.correctiveRemarks;
+        }
     });
-    
+
+    // Write the updated values back to the sheet
+    range.setValues(values);
+
     return { success: true, message: 'Data saved successfully' };
     
   } catch (error) {
     console.error('Error saving data:', error);
     throw new Error('Failed to save data to Google Sheets: ' + error.message);
   }
+}
+
+function updateSingleCell(productionId, fieldPath, newValue) {
+    try {
+        const sheet = getDataSheet();
+        const range = sheet.getDataRange();
+        const values = range.getValues();
+
+        // Find the row index for the given productionId
+        let rowIndex = -1;
+        for (let i = CONFIG.HEADER_ROW; i < values.length; i++) {
+            if (values[i][columnLetterToIndex(CONFIG.COLUMN_MAPPING.productionId) - 1] === productionId) {
+                rowIndex = i + 1; // 1-based index
+                break;
+            }
+        }
+
+        if (rowIndex === -1) {
+            throw new Error(`Production ID ${productionId} not found.`);
+        }
+
+        // Determine the column to update based on the fieldPath
+        const formattedFieldPath = fieldPath.replace(/\.(\w)/g, (match, p1) => p1.toUpperCase());
+        const columnLetter = CONFIG.COLUMN_MAPPING[formattedFieldPath];
+        if (!columnLetter) {
+            throw new Error(`Invalid field path: ${fieldPath}`);
+        }
+        const colIndex = columnLetterToIndex(columnLetter);
+
+        // Update the cell
+        sheet.getRange(rowIndex, colIndex).setValue(newValue);
+
+        return { success: true, message: 'Cell updated successfully' };
+    } catch (error) {
+        console.error('Error updating cell:', error);
+        throw new Error('Failed to update cell in Google Sheets: ' + error.message);
+    }
 }
 
 /**
@@ -419,6 +449,7 @@ ${index + 1}. Product: ${dev.product} (${dev.productionId})
    Last 3 Production Avg: ₹${dev.last3Avg.toFixed(2)}
    Last 3 Month Avg: ₹${dev.last3MonthAvg.toFixed(2)}
    Last 12 Month Avg: ₹${dev.last12MonthAvg.toFixed(2)}
+   Corrective Remarks: ${dev.correctiveRemarks || 'N/A'}
 `;
   });
 
