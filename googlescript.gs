@@ -22,6 +22,7 @@ const CONFIG = {
     productionId: 'B',     // or use column index: 2
     package: 'D',          // or use column index: 3
     qty: 'N',              // or use column index: 4
+    notes: 'BJ',           // Notes column
     
     // CA Cost columns
     caCorrect: 'CX',        // Column for CA Correct value
@@ -225,6 +226,7 @@ function createItemFromData(data) {
     productionId: (data.productionId || '').toString().trim(),
     package: (data.package || '').toString().trim(),
     qty: parseInt(data.qty) || 0,
+    notes: (data.notes || '').toString().trim(),
     ca: {
       correct: parseFloat(data.caCorrect) || 0,
       benchmark: parseFloat(data.caBenchmark) || 0,

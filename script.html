@@ -17,7 +17,7 @@ function initializeDashboard() {
                 "scrollX": true,
                 "scrollCollapse": true,
                 "paging": false,
-                "ordering": false,
+                "ordering": true,
                 "info": false,
                 "fixedHeader": {
                     "header": true,
@@ -52,6 +52,7 @@ function populateTable() {
             item.productionId,
             item.package,
             item.qty.toLocaleString(),
+            `<div class="notes-col">${item.notes}</div>`,
             `<div class="cost-cell editable-cell" onclick="makeCellEditable(this, ${originalIndex}, 'ca.correct')">₹${item.ca.correct.toFixed(2)}</div>`,
             `<div class="cost-cell">₹${item.ca.benchmark.toFixed(2)}</div>`,
             `<div class="cost-cell">₹${item.ca.last3Prod.toFixed(2)}</div>`,
