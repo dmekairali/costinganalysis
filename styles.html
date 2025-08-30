@@ -169,13 +169,10 @@ body {
 
 .data-table th {
     background: linear-gradient(135deg, #667eea, #764ba2);
-    color: white;
+    color: #333;
     padding: 15px 10px;
     text-align: center;
     font-weight: 600;
-    position: sticky;
-    top: 0;
-    z-index: 10;
     font-size: 11px;
     line-height: 1.2;
 }
@@ -223,12 +220,8 @@ body {
     background: linear-gradient(135deg, #f093fb, #f5576c);
 }
 
-.status-approved {
-    background: linear-gradient(135deg, #4facfe, #00f2fe);
-}
-
-.status-pending {
-    background: linear-gradient(135deg, #ffc107, #ff8c00);
+.status-no-need {
+    background: linear-gradient(135deg, #bdc3c7, #2c3e50);
 }
 
 .section-divider {
@@ -353,6 +346,42 @@ body {
     background: linear-gradient(90deg, rgba(40, 167, 69, 0.1), rgba(40, 167, 69, 0.05)) !important;
     border-left: 4px solid #28a745;
 }
+
+/* DataTables custom styling */
+.dataTables_wrapper .dataTables_filter input {
+    padding: 10px 15px;
+    border: 2px solid #e1e5e9;
+    border-radius: 8px;
+    font-size: 14px;
+    transition: all 0.3s ease;
+    min-width: 250px;
+    margin-left: 10px;
+}
+
+.dataTables_wrapper .dataTables_filter input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.dataTables_wrapper .dataTables_length select {
+    padding: 10px 15px;
+    border: 2px solid #e1e5e9;
+    border-radius: 8px;
+    font-size: 14px;
+    transition: all 0.3s ease;
+    min-width: 80px;
+    margin-right: 10px;
+}
+
+table.dataTable thead th, table.dataTable thead td {
+    border-bottom: 1px solid #667eea;
+}
+
+table.dataTable.no-footer {
+    border-bottom: 1px solid #e1e5e9;
+}
+
 
 @keyframes pulse {
     0% { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.4); }
