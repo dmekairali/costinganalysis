@@ -4,7 +4,6 @@
  * Handles OpenAI integration, Google Sheets operations, and data processing
  */
 
-// Enhanced Configuration with column mapping and filters
 const CONFIG = {
   // Replace with your actual OpenAI API key
   OPENAI_API_KEY: 'your-openai-api-key-here',
@@ -34,28 +33,36 @@ const CONFIG = {
     caStatus: 'DD',         // Column for CA Status
     
     // TOC Cost columns
-tocCorrect: 'DE',
-tocBenchmark: 'DF',
-tocLast3Prod: 'DG',
-tocLast3Month: 'DH',
-tocLast12Month: 'DI',
-tocNewBenchmark: 'DJ',
-tocStatus: 'DK',
+    tocCorrect: 'DE',
+    tocBenchmark: 'DF',
+    tocLast3Prod: 'DG',
+    tocLast3Month: 'DH',
+    tocLast12Month: 'DI',
+    tocNewBenchmark: 'DJ',
+    tocStatus: 'DK',
 
-// Time columns
-timeCorrect: 'DL',
-timeBenchmark: 'DM',
-timeLast3Prod: 'DN',
-timeLast3Month: 'DO',
-timeLast12Month: 'DP',
-timeNewBenchmark: 'DQ',
-timeStatus: 'DR'
+    // Time columns
+    timeCorrect: 'DL',
+    timeBenchmark: 'DM',
+    timeLast3Prod: 'DN',
+    timeLast3Month: 'DO',
+    timeLast12Month: 'DP',
+    timeNewBenchmark: 'DQ',
+    timeStatus: 'DR'
   },
   
   // OpenAI configuration
   OPENAI_MODEL: 'gpt-4o',
   OPENAI_API_URL: 'https://api.openai.com/v1/chat/completions'
 };
+
+function columnLetterToIndex(letter) {
+  let column = 0, length = letter.length;
+  for (let i = 0; i < length; i++) {
+    column += (letter.charCodeAt(i) - 64) * Math.pow(26, length - i - 1);
+  }
+  return column;
+}
 
 
 
@@ -254,12 +261,10 @@ function createItemFromData(data) {
 function normalizeStatus(status) {
   const statusStr = (status || '').toString().toLowerCase().trim();
   
-  if (statusStr.includes('approv')) return 'approved';
-  if (statusStr.includes('updat')) return 'update';
-  if (statusStr.includes('pend')) return 'pending';
-  if (statusStr.includes('reject')) return 'rejected';
+  if (statusStr.includes('no need')) return 'no_need';
+  if (statusStr.includes('update benchmark cost')) return 'update';
   
-  return statusStr || 'update';
+  return 'update'; // Default to 'update'
 }
 
 /**
@@ -333,60 +338,37 @@ function getConfigurationTemplate() {
 
 
 /**
- * Save costing data to Google Sheets
+ * Save costing data to Google Sheets by updating individual cells.
+ * Note: This method can be slow if updating a large number of rows simultaneously,
+ * as it makes multiple write calls to the Google Sheets API.
  */
-function saveCostingData(costingData) {
+function saveCostingData(updatedCostingData) {
   try {
     const sheet = getDataSheet();
+    const range = sheet.getDataRange();
+    const values = range.getValues();
     
-    // Clear existing data
-    sheet.clear();
-    
-    // Add headers
-    const headers = [
-      'Product Name', 'Production ID', 'Package', 'Qty',
-      'CA Correct', 'CA Benchmark', 'CA Last 3 Prod', 'CA Last 3 Month', 'CA Last 12 Month', 'CA New Benchmark', 'CA Status',
-      'TOC Correct', 'TOC Benchmark', 'TOC Last 3 Prod', 'TOC Last 3 Month', 'TOC Last 12 Month', 'TOC New Benchmark', 'TOC Status',
-      'Time Correct', 'Time Benchmark', 'Time Last 3 Prod', 'Time Last 3 Month', 'Time Last 12 Month', 'Time New Benchmark', 'Time Status'
-    ];
-    
-    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-    
-    // Add data
-    const rows = costingData.map(item => [
-      item.productName,
-      item.productionId,
-      item.package,
-      item.qty,
-      item.ca.correct,
-      item.ca.benchmark,
-      item.ca.last3Prod,
-      item.ca.last3Month,
-      item.ca.last12Month,
-      item.ca.newBenchmark,
-      item.ca.status,
-      item.toc.correct,
-      item.toc.benchmark,
-      item.toc.last3Prod,
-      item.toc.last3Month,
-      item.toc.last12Month,
-      item.toc.newBenchmark,
-      item.toc.status,
-      item.time.correct,
-      item.time.benchmark,
-      item.time.last3Prod,
-      item.time.last3Month,
-      item.time.last12Month,
-      item.time.newBenchmark,
-      item.time.status
-    ]);
-    
-    if (rows.length > 0) {
-      sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+    // Create a map of production IDs to row index for faster lookups
+    const productionIdToRowIndex = {};
+    for (let i = CONFIG.HEADER_ROW; i < values.length; i++) {
+      const productionId = values[i][columnLetterToIndex(CONFIG.COLUMN_MAPPING.productionId) - 1];
+      if (productionId) {
+        productionIdToRowIndex[productionId] = i + 1; // Use 1-based index for getRange
+      }
     }
-    
-    // Format sheet
-    formatDataSheet(sheet);
+
+    updatedCostingData.forEach(item => {
+      const rowIndex = productionIdToRowIndex[item.productionId];
+      if (rowIndex !== undefined) {
+        // Update the 6 specific columns for the given row
+        sheet.getRange(rowIndex, columnLetterToIndex(CONFIG.COLUMN_MAPPING.caNewBenchmark)).setValue(item.ca.newBenchmark);
+        sheet.getRange(rowIndex, columnLetterToIndex(CONFIG.COLUMN_MAPPING.caStatus)).setValue(item.ca.status);
+        sheet.getRange(rowIndex, columnLetterToIndex(CONFIG.COLUMN_MAPPING.tocNewBenchmark)).setValue(item.toc.newBenchmark);
+        sheet.getRange(rowIndex, columnLetterToIndex(CONFIG.COLUMN_MAPPING.tocStatus)).setValue(item.toc.status);
+        sheet.getRange(rowIndex, columnLetterToIndex(CONFIG.COLUMN_MAPPING.timeNewBenchmark)).setValue(item.time.newBenchmark);
+        sheet.getRange(rowIndex, columnLetterToIndex(CONFIG.COLUMN_MAPPING.timeStatus)).setValue(item.time.status);
+      }
+    });
     
     return { success: true, message: 'Data saved successfully' };
     
