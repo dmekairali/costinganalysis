@@ -58,40 +58,81 @@
                 <table class="data-table" id="costing-table">
                     <thead>
                         <tr>
-                            <th rowspan="2">Product Name</th>
-                            <th rowspan="2">Production ID</th>
-                            <th rowspan="2">Package</th>
-                            <th rowspan="2">Qty</th>
-                            <th colspan="7" class="section-divider">CA Cost Analysis (₹/Unit)</th>
-                            <th colspan="7" class="section-divider">TOC Cost Analysis (₹/Unit)</th>
-                            <th colspan="7" class="section-divider">Time Analysis</th>
+                            <th rowspan="3">Product Name</th>
+                            <th rowspan="3">Production ID</th>
+                            <th rowspan="3">Package</th>
+                            <th rowspan="3">Qty</th>
+                            <th colspan="8" class="section-divider">CA Cost Analysis (₹/Unit)</th>
+                            <th colspan="8" class="section-divider">TOC Cost Analysis (₹/Unit)</th>
+                            <th colspan="8" class="section-divider">Time Analysis</th>
+                        </tr>
+                        <tr>
+                            <td colspan="8" class="section-controls">
+                                <div style="display: flex; justify-content: space-around; align-items: center; font-size: 11px;">
+                                    <span>Bulk Status:
+                                        <select id="ca-bulk-status" style="font-size: 11px; padding: 1px;">
+                                            <option value="update">Update</option>
+                                            <option value="no_need">No Need</option>
+                                        </select>
+                                        <button onclick="bulkUpdateStatus('ca')" style="font-size: 11px; padding: 1px 3px;">Apply</button>
+                                    </span>
+                                    <span>Filter Dev: <input type="range" id="ca-deviation-filter" min="0" max="100" value="0" style="width: 80px;"> <span id="ca-deviation-value">0%</span></span>
+                                </div>
+                            </td>
+                            <td colspan="8" class="section-controls">
+                                <div style="display: flex; justify-content: space-around; align-items: center; font-size: 11px;">
+                                    <span>Bulk Status:
+                                        <select id="toc-bulk-status" style="font-size: 11px; padding: 1px;">
+                                            <option value="update">Update</option>
+                                            <option value="no_need">No Need</option>
+                                        </select>
+                                        <button onclick="bulkUpdateStatus('toc')" style="font-size: 11px; padding: 1px 3px;">Apply</button>
+                                    </span>
+                                    <span>Filter Dev: <input type="range" id="toc-deviation-filter" min="0" max="100" value="0" style="width: 80px;"> <span id="toc-deviation-value">0%</span></span>
+                                </div>
+                            </td>
+                            <td colspan="8" class="section-controls">
+                                <div style="display: flex; justify-content: space-around; align-items: center; font-size: 11px;">
+                                    <span>Bulk Status:
+                                        <select id="time-bulk-status" style="font-size: 11px; padding: 1px;">
+                                            <option value="update">Update</option>
+                                            <option value="no_need">No Need</option>
+                                        </select>
+                                        <button onclick="bulkUpdateStatus('time')" style="font-size: 11px; padding: 1px 3px;">Apply</button>
+                                    </span>
+                                    <span>Filter Dev: <input type="range" id="time-deviation-filter" min="0" max="100" value="0" style="width: 80px;"> <span id="time-deviation-value">0%</span></span>
+                                </div>
+                            </td>
                         </tr>
                         <tr>
                             <!-- CA Cost columns -->
                             <th data-field-path="ca.correct">Correct CA</th>
                             <th>Benchmark Cost</th>
-                            <th>Last 3 Production Avg</th>
-                            <th>Last 3 Month Avg</th>
-                            <th>Last 12 Month Avg</th>
+                            <th>Last 3 Prod Avg</th>
+                            <th>Last 3 Mo Avg</th>
+                            <th>Last 12 Mo Avg</th>
                             <th data-field-path="ca.newBenchmark">New Benchmark</th>
+                            <th>% Dev</th>
                             <th data-section="ca">Status</th>
                             
                             <!-- TOC Cost columns -->
                             <th class="section-divider" data-field-path="toc.correct">Correct TOC</th>
                             <th>Benchmark Cost</th>
-                            <th>Last 3 Production Avg</th>
-                            <th>Last 3 Month Avg</th>
-                            <th>Last 12 Month Avg</th>
+                            <th>Last 3 Prod Avg</th>
+                            <th>Last 3 Mo Avg</th>
+                            <th>Last 12 Mo Avg</th>
                             <th data-field-path="toc.newBenchmark">New Benchmark</th>
+                            <th>% Dev</th>
                             <th data-section="toc">Status</th>
                             
                             <!-- Time columns -->
                             <th class="section-divider" data-field-path="time.correct">Correct Time</th>
                             <th>Benchmark Time</th>
-                            <th>Last 3 Production Avg</th>
-                            <th>Last 3 Month Avg</th>
-                            <th>Last 12 Month Avg</th>
+                            <th>Last 3 Prod Avg</th>
+                            <th>Last 3 Mo Avg</th>
+                            <th>Last 12 Mo Avg</th>
                             <th data-field-path="time.newBenchmark">New Benchmark</th>
+                            <th>% Dev</th>
                             <th data-section="time">Status</th>
                         </tr>
                     </thead>
