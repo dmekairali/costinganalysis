@@ -335,58 +335,37 @@ function getConfigurationTemplate() {
 /**
  * Save costing data to Google Sheets
  */
-function saveCostingData(costingData) {
+function saveCostingData(updatedCostingData) {
   try {
     const sheet = getDataSheet();
-    
-    // Clear existing data
-    sheet.clear();
-    
-    // Add headers
-    const headers = [
-      'Product Name', 'Production ID', 'Package', 'Qty',
-      'CA Correct', 'CA Benchmark', 'CA Last 3 Prod', 'CA Last 3 Month', 'CA Last 12 Month', 'CA New Benchmark', 'CA Status',
-      'TOC Correct', 'TOC Benchmark', 'TOC Last 3 Prod', 'TOC Last 3 Month', 'TOC Last 12 Month', 'TOC New Benchmark', 'TOC Status',
-      'Time Correct', 'Time Benchmark', 'Time Last 3 Prod', 'Time Last 3 Month', 'Time Last 12 Month', 'Time New Benchmark', 'Time Status'
-    ];
-    
-    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-    
-    // Add data
-    const rows = costingData.map(item => [
-      item.productName,
-      item.productionId,
-      item.package,
-      item.qty,
-      item.ca.correct,
-      item.ca.benchmark,
-      item.ca.last3Prod,
-      item.ca.last3Month,
-      item.ca.last12Month,
-      item.ca.newBenchmark,
-      item.ca.status,
-      item.toc.correct,
-      item.toc.benchmark,
-      item.toc.last3Prod,
-      item.toc.last3Month,
-      item.toc.last12Month,
-      item.toc.newBenchmark,
-      item.toc.status,
-      item.time.correct,
-      item.time.benchmark,
-      item.time.last3Prod,
-      item.time.last3Month,
-      item.time.last12Month,
-      item.time.newBenchmark,
-      item.time.status
-    ]);
-    
-    if (rows.length > 0) {
-      sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+    const range = sheet.getDataRange();
+    const values = range.getValues();
+
+    // Create a map of production IDs to row index for faster lookups
+    const productionIdToRowIndex = {};
+    for (let i = CONFIG.HEADER_ROW; i < values.length; i++) {
+      const productionId = values[i][columnLetterToIndex(CONFIG.COLUMN_MAPPING.productionId) - 1];
+      if (productionId) {
+        productionIdToRowIndex[productionId] = i;
+      }
     }
-    
-    // Format sheet
-    formatDataSheet(sheet);
+
+    updatedCostingData.forEach(item => {
+      const rowIndex = productionIdToRowIndex[item.productionId];
+      if (rowIndex !== undefined) {
+        const row = values[rowIndex];
+        // Update the values in the row based on the item from the client
+        row[columnLetterToIndex(CONFIG.COLUMN_MAPPING.caNewBenchmark) - 1] = item.ca.newBenchmark;
+        row[columnLetterToIndex(CONFIG.COLUMN_MAPPING.caStatus) - 1] = item.ca.status;
+        row[columnLetterToIndex(CONFIG.COLUMN_MAPPING.tocNewBenchmark) - 1] = item.toc.newBenchmark;
+        row[columnLetterToIndex(CONFIG.COLUMN_MAPPING.tocStatus) - 1] = item.toc.status;
+        row[columnLetterToIndex(CONFIG.COLUMN_MAPPING.timeNewBenchmark) - 1] = item.time.newBenchmark;
+        row[columnLetterToIndex(CONFIG.COLUMN_MAPPING.timeStatus) - 1] = item.time.status;
+      }
+    });
+
+    // Write the updated values back to the sheet
+    range.setValues(values);
     
     return { success: true, message: 'Data saved successfully' };
     

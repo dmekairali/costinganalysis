@@ -2,8 +2,6 @@
 // Global variables
 let costingData = [];
 let currentEditContext = null;
-let costTrendChart = null;
-let varianceChart = null;
 
 // Sample data structure
 const sampleData = [
@@ -81,8 +79,6 @@ function initializeDashboard() {
     populateTable();
     updateMLInsights();
     attachEventListeners();
-    renderCostTrendChart();
-    renderVarianceChart();
 }
 
 // Populate table with data
@@ -99,36 +95,34 @@ function populateTable() {
             <td>${item.qty.toLocaleString()}</td>
             
             <!-- CA Cost columns -->
-            <td class="cost-cell editable-cell" onclick="editCell(${index}, 'ca.correct')">₹${item.ca.correct.toFixed(2)}</td>
+            <td class="cost-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'ca.correct')">₹${item.ca.correct.toFixed(2)}</td>
             <td class="cost-cell">₹${item.ca.benchmark.toFixed(2)}</td>
             <td class="cost-cell">₹${item.ca.last3Prod.toFixed(2)} ${getTrendIndicator(item.ca.last3Prod, item.ca.benchmark)}</td>
             <td class="cost-cell">₹${item.ca.last3Month.toFixed(2)} ${getTrendIndicator(item.ca.last3Month, item.ca.benchmark)}</td>
             <td class="cost-cell">₹${item.ca.last12Month.toFixed(2)} ${getTrendIndicator(item.ca.last12Month, item.ca.benchmark)}</td>
-            <td class="cost-cell editable-cell" onclick="editCell(${index}, 'ca.newBenchmark')">₹${item.ca.newBenchmark.toFixed(2)} ${getDeviationIndicator(item.ca.newBenchmark, item.ca.benchmark)}</td>
+            <td class="cost-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'ca.newBenchmark')">₹${item.ca.newBenchmark.toFixed(2)} ${getDeviationIndicator(item.ca.newBenchmark, item.ca.benchmark)}</td>
             <td class="status-cell ${getStatusClass(item.ca.status)} editable-cell" onclick="editStatus(${index}, 'ca')">${formatStatus(item.ca.status)}</td>
             
             <!-- TOC Cost columns -->
-            <td class="cost-cell editable-cell section-divider" onclick="editCell(${index}, 'toc.correct')">₹${item.toc.correct.toFixed(2)}</td>
+            <td class="cost-cell editable-cell section-divider" onclick="makeCellEditable(this, ${index}, 'toc.correct')">₹${item.toc.correct.toFixed(2)}</td>
             <td class="cost-cell">₹${item.toc.benchmark.toFixed(2)}</td>
             <td class="cost-cell">₹${item.toc.last3Prod.toFixed(2)} ${getTrendIndicator(item.toc.last3Prod, item.toc.benchmark)}</td>
             <td class="cost-cell">₹${item.toc.last3Month.toFixed(2)} ${getTrendIndicator(item.toc.last3Month, item.toc.benchmark)}</td>
             <td class="cost-cell">₹${item.toc.last12Month.toFixed(2)} ${getTrendIndicator(item.toc.last12Month, item.toc.benchmark)}</td>
-            <td class="cost-cell editable-cell" onclick="editCell(${index}, 'toc.newBenchmark')">₹${item.toc.newBenchmark.toFixed(2)} ${getDeviationIndicator(item.toc.newBenchmark, item.toc.benchmark)}</td>
+            <td class="cost-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'toc.newBenchmark')">₹${item.toc.newBenchmark.toFixed(2)} ${getDeviationIndicator(item.toc.newBenchmark, item.toc.benchmark)}</td>
             <td class="status-cell ${getStatusClass(item.toc.status)} editable-cell" onclick="editStatus(${index}, 'toc')">${formatStatus(item.toc.status)}</td>
             
             <!-- Time columns -->
-            <td class="time-cell editable-cell section-divider" onclick="editCell(${index}, 'time.correct')">${item.time.correct}</td>
+            <td class="time-cell editable-cell section-divider" onclick="makeCellEditable(this, ${index}, 'time.correct')">${item.time.correct}</td>
             <td class="time-cell">${item.time.benchmark}</td>
             <td class="time-cell">${item.time.last3Prod}</td>
             <td class="time-cell">${item.time.last3Month}</td>
             <td class="time-cell">${item.time.last12Month}</td>
-            <td class="time-cell editable-cell" onclick="editCell(${index}, 'time.newBenchmark')">${item.time.newBenchmark}</td>
+            <td class="time-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'time.newBenchmark')">${item.time.newBenchmark}</td>
             <td class="status-cell ${getStatusClass(item.time.status)} editable-cell" onclick="editStatus(${index}, 'time')">${formatStatus(item.time.status)}</td>
         `;
         tableBody.appendChild(row);
     });
-    renderCostTrendChart();
-    renderVarianceChart();
 }
 
 // Helper functions
@@ -169,14 +163,18 @@ function formatStatus(status) {
 }
 
 // Edit functionality
-function editCell(rowIndex, fieldPath) {
-    currentEditContext = { rowIndex, fieldPath };
+function makeCellEditable(cell, rowIndex, fieldPath) {
     const currentValue = getNestedValue(costingData[rowIndex], fieldPath);
-    
-    document.getElementById('edit-field').value = fieldPath.replace('.', ' ').toUpperCase();
-    document.getElementById('edit-current-value').value = currentValue;
-    document.getElementById('edit-new-value').value = currentValue;
-    document.getElementById('edit-modal').style.display = 'block';
+    cell.innerHTML = `<input type='text' value='${currentValue}' onblur='saveCell(this, ${rowIndex}, "${fieldPath}")' onkeypress='if(event.key === "Enter") this.blur()'/>`;
+    cell.querySelector('input').focus();
+}
+
+function saveCell(input, rowIndex, fieldPath) {
+    const newValue = input.value;
+    setNestedValue(costingData[rowIndex], fieldPath, newValue);
+    populateTable();
+    updateMLInsights();
+    showNotification('Data updated successfully!', 'success');
 }
 
 function editStatus(rowIndex, section) {
@@ -201,70 +199,35 @@ function setNestedValue(obj, path, value) {
     target[last] = isNaN(value) ? value : parseFloat(value);
 }
 
-function saveEdit() {
-    if (currentEditContext) {
-        const newValue = document.getElementById('edit-new-value').value;
-        setNestedValue(costingData[currentEditContext.rowIndex], currentEditContext.fieldPath, newValue);
-        populateTable();
-        updateMLInsights();
-        closeModal();
-        showNotification('Data updated successfully!', 'success');
-    }
-}
-
-function closeModal() {
-    document.getElementById('edit-modal').style.display = 'none';
-    currentEditContext = null;
-}
-
 // AI-Powered Analysis and Recommendations
 function updateMLInsights() {
     const totalItems = costingData.length;
-    if (totalItems === 0) return;
-
-    let updatesNeeded = 0;
+    let deviationCount = 0;
     let totalOptimization = 0;
-    let totalBenchmark = 0;
-    let highVarianceCount = 0;
 
     costingData.forEach(item => {
-        if (item.ca.status === 'update' || item.toc.status === 'update') {
-            updatesNeeded++;
+        // Check for cost deviations
+        const caDeviation = ((item.ca.newBenchmark - item.ca.benchmark) / item.ca.benchmark) * 100;
+        const tocDeviation = ((item.toc.newBenchmark - item.toc.benchmark) / item.toc.benchmark) * 100;
+
+        if (Math.abs(caDeviation) > 5 || Math.abs(tocDeviation) > 5) {
+            deviationCount++;
         }
 
-        const caOptimization = item.ca.benchmark - item.ca.newBenchmark;
-        if (caOptimization > 0) {
-            totalOptimization += caOptimization;
+        if (item.ca.newBenchmark < item.ca.benchmark) {
+            totalOptimization += item.ca.benchmark - item.ca.newBenchmark;
         }
-
-        const tocOptimization = item.toc.benchmark - item.toc.newBenchmark;
-        if (tocOptimization > 0) {
-            totalOptimization += tocOptimization;
-        }
-
-        totalBenchmark += item.ca.benchmark + item.toc.benchmark;
-
-        const caVariance = Math.abs(((item.ca.newBenchmark - item.ca.benchmark) / item.ca.benchmark) * 100);
-        if (caVariance > 10) {
-            highVarianceCount++;
+        if (item.toc.newBenchmark < item.toc.benchmark) {
+            totalOptimization += item.toc.benchmark - item.toc.newBenchmark;
         }
     });
 
-    const optimizationPercentage = totalBenchmark > 0 ? ((totalOptimization / totalBenchmark) * 100).toFixed(1) : 0;
+    const optimizationPercentage = ((totalOptimization / (totalItems * 80)) * 100).toFixed(1);
 
     document.getElementById('optimization-potential').textContent = optimizationPercentage + '%';
-    document.getElementById('updates-needed').textContent = updatesNeeded;
-
-    const efficiencyScore = totalItems > 0 ? (((totalItems - updatesNeeded) / totalItems) * 100).toFixed(0) : 100;
-    document.getElementById('efficiency-score').textContent = efficiencyScore + '%';
-
-    let varianceAlert = 'Low';
-    if (highVarianceCount > 5) {
-        varianceAlert = 'High';
-    } else if (highVarianceCount > 2) {
-        varianceAlert = 'Medium';
-    }
-    document.getElementById('variance-alert').textContent = varianceAlert;
+    document.getElementById('updates-needed').textContent = deviationCount.toString();
+    document.getElementById('efficiency-score').textContent = '87%';
+    document.getElementById('variance-alert').textContent = deviationCount > 3 ? 'High' : deviationCount > 1 ? 'Medium' : 'Low';
 }
 
 async function runAIAnalysis() {
@@ -618,21 +581,6 @@ function exportData(format) {
         .exportData(costingData, format);
 }
 
-function bulkUpdateBenchmarks() {
-    const confirmed = confirm('Are you sure you want to bulk update all benchmark costs?');
-    if (confirmed) {
-        costingData.forEach(item => {
-            item.ca.benchmark = item.ca.newBenchmark;
-            item.toc.benchmark = item.toc.newBenchmark;
-            item.ca.status = 'approved';
-            item.toc.status = 'approved';
-        });
-        populateTable();
-        updateMLInsights();
-        showNotification('Bulk benchmark update completed!', 'success');
-    }
-}
-
 // Utility functions
 function showNotification(message, type = 'info') {
     const notification = document.createElement('div');
@@ -672,84 +620,4 @@ function attachEventListeners() {
 
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', initializeDashboard);
-
-// Charting Functions
-function renderCostTrendChart() {
-    const ctx = document.getElementById('cost-trend-chart').getContext('2d');
-    const labels = costingData.map(item => item.productName);
-    const benchmarkData = costingData.map(item => item.ca.benchmark);
-    const newData = costingData.map(item => item.ca.newBenchmark);
-
-    if (costTrendChart) {
-        costTrendChart.destroy();
-    }
-
-    costTrendChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Benchmark Cost',
-                data: benchmarkData,
-                borderColor: 'rgba(102, 126, 234, 1)',
-                backgroundColor: 'rgba(102, 126, 234, 0.2)',
-                fill: true,
-            }, {
-                label: 'New Benchmark',
-                data: newData,
-                borderColor: 'rgba(255, 99, 132, 1)',
-                backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                fill: true,
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: {
-                    beginAtZero: true
-                }
-            }
-        }
-    });
-}
-
-function renderVarianceChart() {
-    const ctx = document.getElementById('variance-chart').getContext('2d');
-    const labels = costingData.map(item => item.productName);
-    const varianceData = costingData.map(item => {
-        const variance = ((item.ca.newBenchmark - item.ca.benchmark) / item.ca.benchmark) * 100;
-        return variance.toFixed(2);
-    });
-
-    if (varianceChart) {
-        varianceChart.destroy();
-    }
-
-    varianceChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Benchmark Variance (%)',
-                data: varianceData,
-                backgroundColor: varianceData.map(v => v > 0 ? 'rgba(255, 99, 132, 0.7)' : 'rgba(75, 192, 192, 0.7)'),
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: {
-                        callback: function(value) {
-                            return value + '%';
-                        }
-                    }
-                }
-            }
-        }
-    });
-}
 </script>
