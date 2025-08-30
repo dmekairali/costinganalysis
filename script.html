@@ -1,6 +1,7 @@
 <script>
 // Global variables
 let costingData = [];
+let filteredCostingData = [];
 let currentEditContext = null;
 let costingDataTable = null;
 
@@ -10,16 +11,19 @@ function initializeDashboard() {
     google.script.run
         .withSuccessHandler(data => {
             costingData = data;
+            filteredCostingData = data; // Initialize filtered data
             costingDataTable = $('#costing-table').DataTable({
-    "scrollY": "500px",
-    "scrollX": true,
-    "scrollCollapse": true,
-    "paging": false,
-    "fixedHeader": {
-        "header": true,
-        "headerOffset": 50  // Adjust based on your layout
-    }
-});
+                "scrollY": "500px",
+                "scrollX": true,
+                "scrollCollapse": true,
+                "paging": false,
+                "ordering": false,
+                "info": false,
+                "fixedHeader": {
+                    "header": true,
+                    "headerOffset": 50
+                }
+            });
             populateTable();
             updateMLInsights();
             attachEventListeners();
@@ -36,55 +40,67 @@ function initializeDashboard() {
 // Populate table with data
 function populateTable() {
     costingDataTable.clear();
-    const rows = costingData.map((item, index) => {
+    const rows = filteredCostingData.map((item, index) => {
+        const originalIndex = costingData.findIndex(d => d.productionId === item.productionId);
+
+        const caDeviation = calculateDeviation(item.ca.benchmark, item.ca.newBenchmark);
+        const tocDeviation = calculateDeviation(item.toc.benchmark, item.toc.newBenchmark);
+        const timeDeviation = calculateTimeDeviation(item.time.benchmark, item.time.newBenchmark);
+
         return [
             `<strong>${item.productName}</strong>`,
             item.productionId,
             item.package,
             item.qty.toLocaleString(),
-            `<div class="cost-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'ca.correct')">₹${item.ca.correct.toFixed(2)}</div>`,
+            `<div class="cost-cell editable-cell" onclick="makeCellEditable(this, ${originalIndex}, 'ca.correct')">₹${item.ca.correct.toFixed(2)}</div>`,
             `<div class="cost-cell">₹${item.ca.benchmark.toFixed(2)}</div>`,
-            `<div class="cost-cell">₹${item.ca.last3Prod.toFixed(2)} ${getTrendIndicator(item.ca.last3Prod, item.ca.benchmark)}</div>`,
-            `<div class="cost-cell">₹${item.ca.last3Month.toFixed(2)} ${getTrendIndicator(item.ca.last3Month, item.ca.benchmark)}</div>`,
-            `<div class="cost-cell">₹${item.ca.last12Month.toFixed(2)} ${getTrendIndicator(item.ca.last12Month, item.ca.benchmark)}</div>`,
-            `<div class="cost-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'ca.newBenchmark')">₹${item.ca.newBenchmark.toFixed(2)} ${getDeviationIndicator(item.ca.newBenchmark, item.ca.benchmark)}</div>`,
-            `<div class="status-cell ${getStatusClass(item.ca.status)}" onclick="editStatus(${index}, 'ca')">${formatStatus(item.ca.status)}</div>`,
-            `<div class="cost-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'toc.correct')">₹${item.toc.correct.toFixed(2)}</div>`,
+            `<div class="cost-cell">₹${item.ca.last3Prod.toFixed(2)}</div>`,
+            `<div class="cost-cell">₹${item.ca.last3Month.toFixed(2)}</div>`,
+            `<div class="cost-cell">₹${item.ca.last12Month.toFixed(2)}</div>`,
+            `<div class="cost-cell editable-cell" onclick="makeCellEditable(this, ${originalIndex}, 'ca.newBenchmark')">₹${item.ca.newBenchmark.toFixed(2)}</div>`,
+            `<div class="deviation-cell">${caDeviation}</div>`,
+            `<div class="status-cell ${getStatusClass(item.ca.status)}" onclick="editStatus(${originalIndex}, 'ca')">${formatStatus(item.ca.status)}</div>`,
+            `<div class="cost-cell editable-cell" onclick="makeCellEditable(this, ${originalIndex}, 'toc.correct')">₹${item.toc.correct.toFixed(2)}</div>`,
             `<div class="cost-cell">₹${item.toc.benchmark.toFixed(2)}</div>`,
-            `<div class="cost-cell">₹${item.toc.last3Prod.toFixed(2)} ${getTrendIndicator(item.toc.last3Prod, item.toc.benchmark)}</div>`,
-            `<div class="cost-cell">₹${item.toc.last3Month.toFixed(2)} ${getTrendIndicator(item.toc.last3Month, item.toc.benchmark)}</div>`,
-            `<div class="cost-cell">₹${item.toc.last12Month.toFixed(2)} ${getTrendIndicator(item.toc.last12Month, item.toc.benchmark)}</div>`,
-            `<div class="cost-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'toc.newBenchmark')">₹${item.toc.newBenchmark.toFixed(2)} ${getDeviationIndicator(item.toc.newBenchmark, item.toc.benchmark)}</div>`,
-            `<div class="status-cell ${getStatusClass(item.toc.status)}" onclick="editStatus(${index}, 'toc')">${formatStatus(item.toc.status)}</div>`,
-            `<div class="time-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'time.correct')">${item.time.correct}</div>`,
+            `<div class="cost-cell">₹${item.toc.last3Prod.toFixed(2)}</div>`,
+            `<div class="cost-cell">₹${item.toc.last3Month.toFixed(2)}</div>`,
+            `<div class="cost-cell">₹${item.toc.last12Month.toFixed(2)}</div>`,
+            `<div class="cost-cell editable-cell" onclick="makeCellEditable(this, ${originalIndex}, 'toc.newBenchmark')">₹${item.toc.newBenchmark.toFixed(2)}</div>`,
+            `<div class="deviation-cell">${tocDeviation}</div>`,
+            `<div class="status-cell ${getStatusClass(item.toc.status)}" onclick="editStatus(${originalIndex}, 'toc')">${formatStatus(item.toc.status)}</div>`,
+            `<div class="time-cell editable-cell" onclick="makeCellEditable(this, ${originalIndex}, 'time.correct')">${item.time.correct}</div>`,
             `<div class="time-cell">${item.time.benchmark}</div>`,
             `<div class="time-cell">${item.time.last3Prod}</div>`,
             `<div class="time-cell">${item.time.last3Month}</div>`,
             `<div class="time-cell">${item.time.last12Month}</div>`,
-            `<div class="time-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'time.newBenchmark')">${item.time.newBenchmark}</div>`,
-            `<div class="status-cell ${getStatusClass(item.time.status)}" onclick="editStatus(${index}, 'time')">${formatStatus(item.time.status)}</div>`,
+            `<div class="time-cell editable-cell" onclick="makeCellEditable(this, ${originalIndex}, 'time.newBenchmark')">${item.time.newBenchmark}</div>`,
+            `<div class="deviation-cell">${timeDeviation}</div>`,
+            `<div class="status-cell ${getStatusClass(item.time.status)}" onclick="editStatus(${originalIndex}, 'time')">${formatStatus(item.time.status)}</div>`,
         ];
     });
-    costingDataTable.rows.add(rows).draw();
+    costingDataTable.rows.add(rows).draw(false);
 }
 
 // Helper functions
-function getTrendIndicator(current, benchmark) {
-    const variance = ((current - benchmark) / benchmark) * 100;
-    if (Math.abs(variance) < 2) return '';
-    return variance > 0 ? '<span class="trend-indicator trend-up">↑</span>' : '<span class="trend-indicator trend-down">↓</span>';
+function timeToSeconds(timeStr) {
+    if (!timeStr || typeof timeStr !== 'string') return 0;
+    const parts = timeStr.split(':').map(Number);
+    if (parts.length !== 3) return 0;
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
 }
 
-function getDeviationIndicator(newBenchmark, currentBenchmark) {
-    const deviation = ((newBenchmark - currentBenchmark) / currentBenchmark) * 100;
-    if (Math.abs(deviation) < 5) return '';
-    
-    if (deviation > 10) {
-        return '<span class="trend-indicator" style="background: rgba(220, 53, 69, 0.2); color: #dc3545;">⚠️ High Dev</span>';
-    } else if (deviation > 5) {
-        return '<span class="trend-indicator" style="background: rgba(255, 193, 7, 0.2); color: #856404;">⚠️ Med Dev</span>';
-    }
-    return '';
+function calculateDeviation(benchmark, newBenchmark) {
+    if (benchmark === 0) return 'N/A';
+    const deviation = ((newBenchmark - benchmark) / benchmark) * 100;
+    return deviation.toFixed(1) + '%';
+}
+
+function calculateTimeDeviation(benchmarkTime, newBenchmarkTime) {
+    const benchmarkSeconds = timeToSeconds(benchmarkTime);
+    if (benchmarkSeconds === 0) return 'N/A';
+    const newBenchmarkSeconds = timeToSeconds(newBenchmarkTime);
+    const deviation = ((newBenchmarkSeconds - benchmarkSeconds) / benchmarkSeconds) * 100;
+    return deviation.toFixed(1) + '%';
 }
 
 function getStatusClass(status) {
@@ -97,9 +113,9 @@ function getStatusClass(status) {
 
 function formatStatus(status) {
     switch(status) {
-        case 'update': return 'Update Benchmark Cost';
+        case 'update': return 'Update';
         case 'no_need': return 'No Need';
-        default: return 'Update Benchmark Cost';
+        default: return 'Update';
     }
 }
 
@@ -120,17 +136,23 @@ function makeCellEditable(cell, rowIndex, fieldPath) {
 function saveCell(input, rowIndex, fieldPath) {
     const newValue = $(input).val();
     setNestedValue(costingData[rowIndex], fieldPath, newValue);
-    populateTable();
+    filterAndPopulate();
     updateMLInsights();
     showNotification('Data updated successfully!', 'success');
 }
 
 function editStatus(rowIndex, section) {
-    const currentStatus = costingData[rowIndex][section].status;
-    const newStatus = currentStatus === 'update' ? 'no_need' : 'update';
+    const newStatus = costingData[rowIndex][section].status === 'update' ? 'no_need' : 'update';
     
-    costingData[rowIndex][section].status = newStatus;
-    populateTable();
+    if (section === 'ca') {
+        costingData[rowIndex].ca.status = newStatus;
+        costingData[rowIndex].toc.status = newStatus;
+        costingData[rowIndex].time.status = newStatus;
+    } else {
+        costingData[rowIndex][section].status = newStatus;
+    }
+    
+    filterAndPopulate();
     updateMLInsights();
     showNotification(`Status updated to: ${formatStatus(newStatus)}`, 'success');
 }
@@ -143,7 +165,7 @@ function setNestedValue(obj, path, value) {
     const keys = path.split('.');
     const last = keys.pop();
     const target = keys.reduce((o, k) => o[k], obj);
-    target[last] = isNaN(value) ? value : parseFloat(value);
+    target[last] = isNaN(value) || value === '' ? value : parseFloat(value);
 }
 
 // AI-Powered Analysis and Recommendations
@@ -153,23 +175,23 @@ function updateMLInsights() {
     let totalOptimization = 0;
     
     costingData.forEach(item => {
-        // Check for cost deviations
-        const caDeviation = ((item.ca.newBenchmark - item.ca.benchmark) / item.ca.benchmark) * 100;
-        const tocDeviation = ((item.toc.newBenchmark - item.toc.benchmark) / item.toc.benchmark) * 100;
-        
-        if (Math.abs(caDeviation) > 5 || Math.abs(tocDeviation) > 5) {
-            deviationCount++;
+        if (item.ca.benchmark > 0) {
+            const caDeviation = ((item.ca.newBenchmark - item.ca.benchmark) / item.ca.benchmark) * 100;
+            if (Math.abs(caDeviation) > 5) deviationCount++;
+            if (item.ca.newBenchmark < item.ca.benchmark) {
+                totalOptimization += item.ca.benchmark - item.ca.newBenchmark;
+            }
         }
-        
-        if (item.ca.newBenchmark < item.ca.benchmark) {
-            totalOptimization += item.ca.benchmark - item.ca.newBenchmark;
-        }
-        if (item.toc.newBenchmark < item.toc.benchmark) {
-            totalOptimization += item.toc.benchmark - item.toc.newBenchmark;
+        if (item.toc.benchmark > 0) {
+            const tocDeviation = ((item.toc.newBenchmark - item.toc.benchmark) / item.toc.benchmark) * 100;
+            if (Math.abs(tocDeviation) > 5) deviationCount++;
+            if (item.toc.newBenchmark < item.toc.benchmark) {
+                totalOptimization += item.toc.benchmark - item.toc.newBenchmark;
+            }
         }
     });
     
-    const optimizationPercentage = ((totalOptimization / (totalItems * 80)) * 100).toFixed(1);
+    const optimizationPercentage = totalItems > 0 ? ((totalOptimization / (totalItems * 80)) * 100).toFixed(1) : 0;
     
     document.getElementById('optimization-potential').textContent = optimizationPercentage + '%';
     document.getElementById('updates-needed').textContent = deviationCount.toString();
@@ -189,7 +211,6 @@ async function runAIAnalysis() {
     }
     
     try {
-        // Call Google Apps Script function for OpenAI analysis
         google.script.run
             .withSuccessHandler(handleAIAnalysisSuccess)
             .withFailureHandler(handleAIAnalysisFailure)
@@ -219,42 +240,20 @@ function handleAIAnalysisFailure(error) {
 
 function analyzeDeviations() {
     const deviations = [];
-    
     costingData.forEach((item, index) => {
-        const caDeviation = ((item.ca.newBenchmark - item.ca.benchmark) / item.ca.benchmark) * 100;
-        const tocDeviation = ((item.toc.newBenchmark - item.toc.benchmark) / item.toc.benchmark) * 100;
-        
-        if (caDeviation > 5) {
-            deviations.push({
-                index,
-                product: item.productName,
-                productionId: item.productionId,
-                type: 'CA Cost',
-                currentBenchmark: item.ca.benchmark,
-                proposedBenchmark: item.ca.newBenchmark,
-                deviation: caDeviation,
-                last3Avg: item.ca.last3Prod,
-                last3MonthAvg: item.ca.last3Month,
-                last12MonthAvg: item.ca.last12Month
-            });
+        if (item.ca.benchmark > 0) {
+            const caDeviation = ((item.ca.newBenchmark - item.ca.benchmark) / item.ca.benchmark) * 100;
+            if (caDeviation > 5) {
+                deviations.push({ index, product: item.productName, productionId: item.productionId, type: 'CA Cost', currentBenchmark: item.ca.benchmark, proposedBenchmark: item.ca.newBenchmark, deviation: caDeviation, last3Avg: item.ca.last3Prod, last3MonthAvg: item.ca.last3Month, last12MonthAvg: item.ca.last12Month });
+            }
         }
-        
-        if (tocDeviation > 5) {
-            deviations.push({
-                index,
-                product: item.productName,
-                productionId: item.productionId,
-                type: 'TOC Cost',
-                currentBenchmark: item.toc.benchmark,
-                proposedBenchmark: item.toc.newBenchmark,
-                deviation: tocDeviation,
-                last3Avg: item.toc.last3Prod,
-                last3MonthAvg: item.toc.last3Month,
-                last12MonthAvg: item.toc.last12Month
-            });
+        if (item.toc.benchmark > 0) {
+            const tocDeviation = ((item.toc.newBenchmark - item.toc.benchmark) / item.toc.benchmark) * 100;
+            if (tocDeviation > 5) {
+                deviations.push({ index, product: item.productName, productionId: item.productionId, type: 'TOC Cost', currentBenchmark: item.toc.benchmark, proposedBenchmark: item.toc.newBenchmark, deviation: tocDeviation, last3Avg: item.toc.last3Prod, last3MonthAvg: item.toc.last3Month, last12MonthAvg: item.toc.last12Month });
+            }
         }
     });
-    
     return deviations;
 }
 
@@ -263,16 +262,8 @@ function generateFallbackRecommendations(deviations) {
         const trend = analyzeTrend(dev);
         const riskLevel = calculateRiskLevel(dev);
         const recommendation = generateRecommendation(dev, trend, riskLevel);
-        
-        return {
-            ...dev,
-            trend,
-            riskLevel,
-            recommendation,
-            confidence: Math.floor(Math.random() * 20) + 75 // Fallback confidence
-        };
+        return { ...dev, trend, riskLevel, recommendation, confidence: Math.floor(Math.random() * 20) + 75 };
     });
-    
     displayAIRecommendations(recommendations);
     highlightAIRecommendations(recommendations);
 }
@@ -280,7 +271,6 @@ function generateFallbackRecommendations(deviations) {
 function analyzeTrend(deviation) {
     const recent = (deviation.last3Avg + deviation.last3MonthAvg) / 2;
     const historical = deviation.last12MonthAvg;
-    
     if (recent > historical * 1.1) return 'Increasing';
     if (recent < historical * 0.9) return 'Decreasing';
     return 'Stable';
@@ -294,77 +284,23 @@ function calculateRiskLevel(deviation) {
 
 function generateRecommendation(dev, trend, riskLevel) {
     const isIncrease = dev.deviation > 0;
-    
-    if (isIncrease && riskLevel === 'High' && trend === 'Increasing') {
-        return `❌ REJECT: ${dev.deviation.toFixed(1)}% increase is too high. Current trend shows continued cost escalation. Investigate cost drivers before approval.`;
-    }
-    
-    if (isIncrease && riskLevel === 'Medium' && trend === 'Stable') {
-        return `⚠️ CAUTION: ${dev.deviation.toFixed(1)}% increase. Consider phased implementation or seek cost reduction alternatives.`;
-    }
-    
-    if (isIncrease && riskLevel === 'Low') {
-        return `✅ APPROVE: ${dev.deviation.toFixed(1)}% increase is acceptable based on recent production data.`;
-    }
-    
-    if (!isIncrease) {
-        return `✅ APPROVE: Cost reduction of ${Math.abs(dev.deviation).toFixed(1)}% should be implemented immediately.`;
-    }
-    
+    if (isIncrease && riskLevel === 'High' && trend === 'Increasing') return `❌ REJECT: ${dev.deviation.toFixed(1)}% increase is too high. Current trend shows continued cost escalation. Investigate cost drivers before approval.`;
+    if (isIncrease && riskLevel === 'Medium' && trend === 'Stable') return `⚠️ CAUTION: ${dev.deviation.toFixed(1)}% increase. Consider phased implementation or seek cost reduction alternatives.`;
+    if (isIncrease && riskLevel === 'Low') return `✅ APPROVE: ${dev.deviation.toFixed(1)}% increase is acceptable based on recent production data.`;
+    if (!isIncrease) return `✅ APPROVE: Cost reduction of ${Math.abs(dev.deviation).toFixed(1)}% should be implemented immediately.`;
     return `📊 REVIEW: Requires detailed analysis. Deviation of ${dev.deviation.toFixed(1)}% needs stakeholder review.`;
 }
 
 function displayAIRecommendations(recommendations) {
-    let modalContent = `
-        <div style="max-height: 400px; overflow-y: auto;">
-            <h3 style="color: #667eea; margin-bottom: 20px;">🤖 AI Analysis Results</h3>
-    `;
-    
+    let modalContent = `<div style="max-height: 400px; overflow-y: auto;"><h3 style="color: #667eea; margin-bottom: 20px;">🤖 AI Analysis Results</h3>`;
     recommendations.forEach(rec => {
-        const statusColor = rec.recommendation.includes('APPROVE') ? '#28a745' : 
-                          rec.recommendation.includes('REJECT') ? '#dc3545' : '#ffc107';
-        
-        modalContent += `
-            <div style="border-left: 4px solid ${statusColor}; padding: 15px; margin: 15px 0; background: #f8f9fa; border-radius: 5px;">
-                <h4 style="margin: 0 0 10px 0;">${rec.product} - ${rec.type}</h4>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
-                    <div><strong>Current:</strong> ₹${rec.currentBenchmark.toFixed(2)}</div>
-                    <div><strong>Proposed:</strong> ₹${rec.proposedBenchmark.toFixed(2)}</div>
-                    <div><strong>Deviation:</strong> ${rec.deviation.toFixed(1)}%</div>
-                    <div><strong>Trend:</strong> ${rec.trend}</div>
-                </div>
-                <div style="background: white; padding: 10px; border-radius: 3px; font-weight: 600;">
-                    ${rec.recommendation}
-                </div>
-                <div style="text-align: right; margin-top: 8px; font-size: 12px; color: #666;">
-                    AI Confidence: ${rec.confidence}%
-                </div>
-            </div>
-        `;
+        const statusColor = rec.recommendation.includes('APPROVE') ? '#28a745' : rec.recommendation.includes('REJECT') ? '#dc3545' : '#ffc107';
+        modalContent += `<div style="border-left: 4px solid ${statusColor}; padding: 15px; margin: 15px 0; background: #f8f9fa; border-radius: 5px;"><h4 style="margin: 0 0 10px 0;">${rec.product} - ${rec.type}</h4><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;"><div><strong>Current:</strong> ₹${rec.currentBenchmark.toFixed(2)}</div><div><strong>Proposed:</strong> ₹${rec.proposedBenchmark.toFixed(2)}</div><div><strong>Deviation:</strong> ${rec.deviation.toFixed(1)}%</div><div><strong>Trend:</strong> ${rec.trend}</div></div><div style="background: white; padding: 10px; border-radius: 3px; font-weight: 600;">${rec.recommendation}</div><div style="text-align: right; margin-top: 8px; font-size: 12px; color: #666;">AI Confidence: ${rec.confidence}%</div></div>`;
     });
-    
     modalContent += '</div>';
-    
-    // Create AI recommendations modal
     const aiModal = document.createElement('div');
-    aiModal.style.cssText = `
-        position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-        background: rgba(0,0,0,0.8); backdrop-filter: blur(5px); z-index: 1001;
-    `;
-    
-    aiModal.innerHTML = `
-        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
-                   background: white; border-radius: 15px; padding: 30px; max-width: 800px; width: 90%;">
-            ${modalContent}
-            <div style="text-align: center; margin-top: 20px;">
-                <button onclick="this.closest('div[style*=\"position: fixed\"]').remove()" 
-                        class="btn btn-primary">Close</button>
-                <button onclick="applyAIRecommendations(${JSON.stringify(recommendations).replace(/"/g, '&quot;')}); this.closest('div[style*=\"position: fixed\"]').remove()" 
-                        class="btn btn-secondary" style="margin-left: 10px;">Apply Recommendations</button>
-            </div>
-        </div>
-    `;
-    
+    aiModal.style.cssText = `position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(5px); z-index: 1001;`;
+    aiModal.innerHTML = `<div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border-radius: 15px; padding: 30px; max-width: 800px; width: 90%;">${modalContent}<div style="text-align: center; margin-top: 20px;"><button onclick="this.closest('div[style*=\"position: fixed\"]').remove()" class="btn btn-primary">Close</button><button onclick="applyAIRecommendations(${JSON.stringify(recommendations).replace(/"/g, '&quot;')}); this.closest('div[style*=\"position: fixed\"]').remove()" class="btn btn-secondary" style="margin-left: 10px;">Apply Recommendations</button></div></div>`;
     document.body.appendChild(aiModal);
 }
 
@@ -372,9 +308,7 @@ function highlightAIRecommendations(recommendations) {
     recommendations.forEach(rec => {
         const row = document.querySelectorAll('#table-body tr')[rec.index];
         if (row) {
-            row.style.background = rec.recommendation.includes('REJECT') ? 'rgba(220, 53, 69, 0.1)' :
-                                 rec.recommendation.includes('APPROVE') ? 'rgba(40, 167, 69, 0.1)' :
-                                 'rgba(255, 193, 7, 0.1)';
+            row.style.background = rec.recommendation.includes('REJECT') ? 'rgba(220, 53, 69, 0.1)' : rec.recommendation.includes('APPROVE') ? 'rgba(40, 167, 69, 0.1)' : 'rgba(255, 193, 7, 0.1)';
             row.classList.add('highlight-recommendation');
         }
     });
@@ -383,7 +317,6 @@ function highlightAIRecommendations(recommendations) {
 function applyAIRecommendations(recommendations) {
     recommendations.forEach(rec => {
         if (rec.recommendation.includes('APPROVE')) {
-            // Auto-approve the recommendation
             if (rec.type === 'CA Cost') {
                 costingData[rec.index].ca.benchmark = rec.proposedBenchmark;
                 costingData[rec.index].ca.status = 'approved';
@@ -393,8 +326,7 @@ function applyAIRecommendations(recommendations) {
             }
         }
     });
-    
-    populateTable();
+    filterAndPopulate();
     updateMLInsights();
     showNotification('AI recommendations applied successfully!', 'success');
 }
@@ -405,19 +337,11 @@ function generateSmartRecommendations() {
         showNotification('No significant cost deviations found. All benchmarks are optimal!', 'success');
         return;
     }
-    
     let recommendations = "🎯 Smart Cost Recommendations:\n\n";
-    
     deviations.forEach((dev, index) => {
-        const action = dev.deviation > 15 ? "URGENT REVIEW" : 
-                     dev.deviation > 10 ? "REVIEW REQUIRED" : 
-                     dev.deviation > 5 ? "MONITOR" : "OPTIMIZE";
-                     
-        recommendations += `${index + 1}. ${dev.product} (${dev.type})\n`;
-        recommendations += `   Current: ₹${dev.currentBenchmark.toFixed(2)} → Proposed: ₹${dev.proposedBenchmark.toFixed(2)}\n`;
-        recommendations += `   Deviation: ${dev.deviation.toFixed(1)}% | Action: ${action}\n\n`;
+        const action = dev.deviation > 15 ? "URGENT REVIEW" : dev.deviation > 10 ? "REVIEW REQUIRED" : dev.deviation > 5 ? "MONITOR" : "OPTIMIZE";
+        recommendations += `${index + 1}. ${dev.product} (${dev.type})\n   Current: ₹${dev.currentBenchmark.toFixed(2)} → Proposed: ₹${dev.proposedBenchmark.toFixed(2)}\n   Deviation: ${dev.deviation.toFixed(1)}% | Action: ${action}\n\n`;
     });
-    
     alert(recommendations);
 }
 
@@ -433,7 +357,8 @@ function importFromGoogleSheets() {
 function handleImportSuccess(data) {
     if (data && data.length > 0) {
         costingData = data;
-        populateTable();
+        filteredCostingData = data;
+        filterAndPopulate();
         updateMLInsights();
         showNotification('Data imported successfully from Google Sheets!', 'success');
     } else {
@@ -463,69 +388,21 @@ function handleSaveFailure(error) {
     showNotification('Failed to save data to Google Sheets.', 'error');
 }
 
-// Filter and search functionality
-function applyFilters() {
-    const productFilter = document.getElementById('product-filter').value;
-    const statusFilter = document.getElementById('status-filter').value;
-    const varianceFilter = document.getElementById('variance-filter').value;
-    const searchTerm = document.getElementById('search-input').value.toLowerCase();
-    
-    let filteredData = costingData;
-    
-    if (searchTerm) {
-        filteredData = filteredData.filter(item => 
-            item.productName.toLowerCase().includes(searchTerm) ||
-            item.productionId.toLowerCase().includes(searchTerm)
-        );
-    }
-    
-    if (statusFilter) {
-        filteredData = filteredData.filter(item => 
-            item.ca.status === statusFilter || item.toc.status === statusFilter || item.time.status === statusFilter
-        );
-    }
-    
-    if (varianceFilter) {
-        filteredData = filteredData.filter(item => {
-            const caVar = Math.abs(((item.ca.newBenchmark - item.ca.benchmark) / item.ca.benchmark) * 100);
-            const tocVar = Math.abs(((item.toc.newBenchmark - item.toc.benchmark) / item.toc.benchmark) * 100);
-            const maxVar = Math.max(caVar, tocVar);
-            
-            switch(varianceFilter) {
-                case 'high': return maxVar > 10;
-                case 'medium': return maxVar >= 5 && maxVar <= 10;
-                case 'low': return maxVar < 5;
-                default: return true;
-            }
-        });
-    }
-    
-    // Temporarily update table with filtered data
-    const originalData = costingData;
-    costingData = filteredData;
-    populateTable();
-    costingData = originalData;
-    
-    showNotification(`Filters applied! Showing ${filteredData.length} of ${originalData.length} items.`, 'success');
-}
+// Filter and search functionality (Simplified)
+function filterAndPopulate() {
+    const caDevFilter = parseFloat(document.getElementById('ca-deviation-filter').value);
+    const tocDevFilter = parseFloat(document.getElementById('toc-deviation-filter').value);
+    const timeDevFilter = parseFloat(document.getElementById('time-deviation-filter').value);
 
-function resetFilters() {
-    document.getElementById('product-filter').value = '';
-    document.getElementById('status-filter').value = '';
-    document.getElementById('variance-filter').value = '';
-    document.getElementById('search-input').value = '';
-    populateTable();
-    showNotification('Filters reset!', 'info');
-}
+    filteredCostingData = costingData.filter(item => {
+        const caDev = Math.abs(parseFloat(calculateDeviation(item.ca.benchmark, item.ca.newBenchmark))) || 0;
+        const tocDev = Math.abs(parseFloat(calculateDeviation(item.toc.benchmark, item.toc.newBenchmark))) || 0;
+        const timeDev = Math.abs(parseFloat(calculateTimeDeviation(item.time.benchmark, item.time.newBenchmark))) || 0;
 
-// Export functionality
-function exportData(format) {
-    showNotification(`Exporting data to ${format.toUpperCase()}...`, 'info');
+        return caDev >= caDevFilter && tocDev >= tocDevFilter && timeDev >= timeDevFilter;
+    });
     
-    google.script.run
-        .withSuccessHandler(() => showNotification(`Data exported to ${format.toUpperCase()} successfully!`, 'success'))
-        .withFailureHandler(() => showNotification(`Failed to export data to ${format.toUpperCase()}.`, 'error'))
-        .exportData(costingData, format);
+    populateTable();
 }
 
 function bulkUpdateBenchmarks() {
@@ -537,10 +414,19 @@ function bulkUpdateBenchmarks() {
             item.ca.status = 'approved';
             item.toc.status = 'approved';
         });
-        populateTable();
+        filterAndPopulate();
         updateMLInsights();
         showNotification('Bulk benchmark update completed!', 'success');
     }
+}
+
+function bulkUpdateStatus(section) {
+    const status = document.getElementById(`${section}-bulk-status`).value;
+    costingData.forEach(item => {
+        item[section].status = status;
+    });
+    filterAndPopulate();
+    showNotification(`${section.toUpperCase()} statuses updated to: ${formatStatus(status)}`, 'success');
 }
 
 // Utility functions
@@ -564,19 +450,18 @@ function showLoading(show) {
 }
 
 function attachEventListeners() {
-    // Close modal when clicking outside
-    document.addEventListener('click', function(event) {
-        const modal = document.getElementById('edit-modal');
-        if (event.target === modal) {
-            closeModal();
-        }
-    });
-    
-    // Enter key to save edit
-    document.getElementById('edit-new-value').addEventListener('keypress', function(event) {
-        if (event.key === 'Enter') {
-            saveEdit();
-        }
+    // Modal listeners
+    document.addEventListener('click', (event) => { if (event.target === document.getElementById('edit-modal')) closeModal(); });
+    document.getElementById('edit-new-value').addEventListener('keypress', (event) => { if (event.key === 'Enter') saveEdit(); });
+
+    // Deviation filters
+    ['ca', 'toc', 'time'].forEach(section => {
+        const filter = document.getElementById(`${section}-deviation-filter`);
+        const valueDisplay = document.getElementById(`${section}-deviation-value`);
+        filter.addEventListener('input', () => {
+            valueDisplay.textContent = `${filter.value}%`;
+            filterAndPopulate();
+        });
     });
 }
 
