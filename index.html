@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Costing Review Dashboard</title>
+    <?!= HtmlService.createHtmlOutputFromFile('styles').getContent(); ?>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🚀 Advanced Costing Review Dashboard</h1>
+            <p>Intelligent cost analysis with AI-powered insights and real-time decision support</p>
+        </div>
+
+        <!-- ML Insights Panel -->
+        <div class="ml-insights">
+            <h3>🤖 AI-Powered Insights & Recommendations</h3>
+            <div class="insight-cards">
+                <div class="insight-card">
+                    <h4>Cost Optimization Potential</h4>
+                    <div class="value" id="optimization-potential">12.3%</div>
+                </div>
+                <div class="insight-card">
+                    <h4>Benchmark Updates Needed</h4>
+                    <div class="value" id="updates-needed">5</div>
+                </div>
+                <div class="insight-card">
+                    <h4>Time Efficiency Score</h4>
+                    <div class="value" id="efficiency-score">87%</div>
+                </div>
+                <div class="insight-card">
+                    <h4>Cost Variance Alert</h4>
+                    <div class="value" id="variance-alert">Medium</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Controls Panel -->
+        <div class="controls-panel">
+            <div class="controls-row">
+                <div class="control-group">
+                    <label>Product Filter</label>
+                    <select class="control-input" id="product-filter">
+                        <option value="">All Products</option>
+                        <option value="product-a">Product A</option>
+                        <option value="product-b">Product B</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>Status Filter</label>
+                    <select class="control-input" id="status-filter">
+                        <option value="">All Status</option>
+                        <option value="update">Update Benchmark Cost</option>
+                        <option value="approved">Approved</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>Cost Variance</label>
+                    <select class="control-input" id="variance-filter">
+                        <option value="">All Variance</option>
+                        <option value="high">High (>10%)</option>
+                        <option value="medium">Medium (5-10%)</option>
+                        <option value="low">Low (<5%)</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>Search</label>
+                    <input type="text" class="control-input" id="search-input" placeholder="Search products...">
+                </div>
+                <button class="btn btn-primary" onclick="applyFilters()">Apply Filters</button>
+                <button class="btn btn-secondary" onclick="resetFilters()">Reset</button>
+                <div class="export-options">
+                    <button class="btn btn-secondary" onclick="exportData('excel')">📊 Export Excel</button>
+                    <button class="btn btn-secondary" onclick="exportData('pdf')">📄 Export PDF</button>
+                </div>
+            </div>
+            <div class="controls-row">
+                <button class="btn btn-primary" onclick="runAIAnalysis()">🤖 Run AI Cost Analysis</button>
+                <button class="btn btn-primary" onclick="generateSmartRecommendations()">💡 Smart Recommendations</button>
+                <button class="btn btn-primary" onclick="bulkUpdateBenchmarks()">🔄 Bulk Update Benchmarks</button>
+                <button class="btn btn-secondary" onclick="importFromGoogleSheets()">📥 Load from Sheets</button>
+                <button class="btn btn-secondary" onclick="saveToGoogleSheets()">💾 Save to Sheets</button>
+            </div>
+        </div>
+
+        <!-- Data Table -->
+        <div class="data-table-container">
+            <div class="table-wrapper">
+                <table class="data-table" id="costing-table">
+                    <thead>
+                        <tr>
+                            <th rowspan="2">Product Name</th>
+                            <th rowspan="2">Production ID</th>
+                            <th rowspan="2">Package</th>
+                            <th rowspan="2">Qty</th>
+                            <th colspan="7" class="section-divider">CA Cost Analysis (₹/Unit)</th>
+                            <th colspan="7" class="section-divider">TOC Cost Analysis (₹/Unit)</th>
+                            <th colspan="7" class="section-divider">Time Analysis</th>
+                        </tr>
+                        <tr>
+                            <!-- CA Cost columns -->
+                            <th>Correct CA</th>
+                            <th>Benchmark Cost</th>
+                            <th>Last 3 Production Avg</th>
+                            <th>Last 3 Month Avg</th>
+                            <th>Last 12 Month Avg</th>
+                            <th>New Benchmark</th>
+                            <th>Status</th>
+                            
+                            <!-- TOC Cost columns -->
+                            <th class="section-divider">Correct TOC</th>
+                            <th>Benchmark Cost</th>
+                            <th>Last 3 Production Avg</th>
+                            <th>Last 3 Month Avg</th>
+                            <th>Last 12 Month Avg</th>
+                            <th>New Benchmark</th>
+                            <th>Status</th>
+                            
+                            <!-- Time columns -->
+                            <th class="section-divider">Correct Time</th>
+                            <th>Benchmark Time</th>
+                            <th>Last 3 Production Avg</th>
+                            <th>Last 3 Month Avg</th>
+                            <th>Last 12 Month Avg</th>
+                            <th>New Benchmark</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body">
+                        <!-- Data will be populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Analytics Panel -->
+        <div class="analytics-panel">
+            <div class="chart-container">
+                <div class="chart-title">Cost Trend Analysis</div>
+                <canvas id="cost-trend-chart" width="400" height="200"></canvas>
+            </div>
+            <div class="chart-container">
+                <div class="chart-title">Benchmark Variance Distribution</div>
+                <canvas id="variance-chart" width="400" height="200"></canvas>
+            </div>
+            <div class="chart-container">
+                <div class="chart-title">Production Efficiency Metrics</div>
+                <div id="efficiency-metrics"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div class="edit-modal" id="edit-modal">
+        <div class="modal-content">
+            <div class="modal-header">Edit Cost Data</div>
+            <div class="form-group">
+                <label>Field</label>
+                <input type="text" id="edit-field" readonly>
+            </div>
+            <div class="form-group">
+                <label>Current Value</label>
+                <input type="text" id="edit-current-value" readonly>
+            </div>
+            <div class="form-group">
+                <label>New Value</label>
+                <input type="text" id="edit-new-value">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveEdit()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Indicator -->
+    <div id="loading-indicator" style="display: none;">
+        <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 2000; display: flex; align-items: center; justify-content: center;">
+            <div style="background: white; padding: 30px; border-radius: 15px; text-align: center;">
+                <div style="font-size: 24px; margin-bottom: 10px;">🤖</div>
+                <div>Processing with AI...</div>
+            </div>
+        </div>
+    </div>
+
+    <?!= HtmlService.createHtmlOutputFromFile('script').getContent(); ?>
+</body>
+</html>
