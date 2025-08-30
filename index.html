@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Advanced Costing Review Dashboard</title>
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.11.5/css/jquery.dataTables.css">
+    <script type="text/javascript" charset="utf8" src="https://code.jquery.com/jquery-3.5.1.js"></script>
+    <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.js"></script>
     <?!= HtmlService.createHtmlOutputFromFile('styles').getContent(); ?>
 </head>
 <body>
@@ -101,31 +104,31 @@
                         </tr>
                         <tr>
                             <!-- CA Cost columns -->
-                            <th>Correct CA</th>
+                            <th data-field-path="ca.correct">Correct CA</th>
                             <th>Benchmark Cost</th>
                             <th>Last 3 Production Avg</th>
                             <th>Last 3 Month Avg</th>
                             <th>Last 12 Month Avg</th>
-                            <th>New Benchmark</th>
-                            <th>Status</th>
+                            <th data-field-path="ca.newBenchmark">New Benchmark</th>
+                            <th data-section="ca">Status</th>
                             
                             <!-- TOC Cost columns -->
-                            <th class="section-divider">Correct TOC</th>
+                            <th class="section-divider" data-field-path="toc.correct">Correct TOC</th>
                             <th>Benchmark Cost</th>
                             <th>Last 3 Production Avg</th>
                             <th>Last 3 Month Avg</th>
                             <th>Last 12 Month Avg</th>
-                            <th>New Benchmark</th>
-                            <th>Status</th>
+                            <th data-field-path="toc.newBenchmark">New Benchmark</th>
+                            <th data-section="toc">Status</th>
                             
                             <!-- Time columns -->
-                            <th class="section-divider">Correct Time</th>
+                            <th class="section-divider" data-field-path="time.correct">Correct Time</th>
                             <th>Benchmark Time</th>
                             <th>Last 3 Production Avg</th>
                             <th>Last 3 Month Avg</th>
                             <th>Last 12 Month Avg</th>
-                            <th>New Benchmark</th>
-                            <th>Status</th>
+                            <th data-field-path="time.newBenchmark">New Benchmark</th>
+                            <th data-section="time">Status</th>
                         </tr>
                     </thead>
                     <tbody id="table-body">

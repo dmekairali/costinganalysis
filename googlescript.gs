@@ -4,7 +4,6 @@
  * Handles OpenAI integration, Google Sheets operations, and data processing
  */
 
-// Enhanced Configuration with column mapping and filters
 const CONFIG = {
   // Replace with your actual OpenAI API key
   OPENAI_API_KEY: 'your-openai-api-key-here',
@@ -34,28 +33,36 @@ const CONFIG = {
     caStatus: 'DD',         // Column for CA Status
     
     // TOC Cost columns
-tocCorrect: 'DE',
-tocBenchmark: 'DF',
-tocLast3Prod: 'DG',
-tocLast3Month: 'DH',
-tocLast12Month: 'DI',
-tocNewBenchmark: 'DJ',
-tocStatus: 'DK',
+    tocCorrect: 'DE',
+    tocBenchmark: 'DF',
+    tocLast3Prod: 'DG',
+    tocLast3Month: 'DH',
+    tocLast12Month: 'DI',
+    tocNewBenchmark: 'DJ',
+    tocStatus: 'DK',
 
-// Time columns
-timeCorrect: 'DL',
-timeBenchmark: 'DM',
-timeLast3Prod: 'DN',
-timeLast3Month: 'DO',
-timeLast12Month: 'DP',
-timeNewBenchmark: 'DQ',
-timeStatus: 'DR'
+    // Time columns
+    timeCorrect: 'DL',
+    timeBenchmark: 'DM',
+    timeLast3Prod: 'DN',
+    timeLast3Month: 'DO',
+    timeLast12Month: 'DP',
+    timeNewBenchmark: 'DQ',
+    timeStatus: 'DR'
   },
   
   // OpenAI configuration
   OPENAI_MODEL: 'gpt-4o',
   OPENAI_API_URL: 'https://api.openai.com/v1/chat/completions'
 };
+
+function columnLetterToIndex(letter) {
+  let column = 0, length = letter.length;
+  for (let i = 0; i < length; i++) {
+    column += (letter.charCodeAt(i) - 64) * Math.pow(26, length - i - 1);
+  }
+  return column;
+}
 
 
 
@@ -254,12 +261,10 @@ function createItemFromData(data) {
 function normalizeStatus(status) {
   const statusStr = (status || '').toString().toLowerCase().trim();
   
-  if (statusStr.includes('approv')) return 'approved';
-  if (statusStr.includes('updat')) return 'update';
-  if (statusStr.includes('pend')) return 'pending';
-  if (statusStr.includes('reject')) return 'rejected';
+  if (statusStr.includes('no need')) return 'no_need';
+  if (statusStr.includes('update benchmark cost')) return 'update';
   
-  return statusStr || 'update';
+  return 'update'; // Default to 'update'
 }
 
 /**

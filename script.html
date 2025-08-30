@@ -2,127 +2,65 @@
 // Global variables
 let costingData = [];
 let currentEditContext = null;
-
-// Sample data structure
-const sampleData = [
-    {
-        productName: "Widget Pro X1",
-        productionId: "WPX-001",
-        package: "Standard",
-        qty: 1000,
-        ca: {
-            correct: 84.73,
-            benchmark: 82.91,
-            last3Prod: 83.41,
-            last3Month: 77.95,
-            last12Month: 74.24,
-            newBenchmark: 84.73,
-            status: "update"
-        },
-        toc: {
-            correct: 81.02,
-            benchmark: 76.98,
-            last3Prod: 81.15,
-            last3Month: 81.31,
-            last12Month: 72.12,
-            newBenchmark: 81.02,
-            status: "update"
-        },
-        time: {
-            correct: "2:00:00",
-            benchmark: "0:00:00",
-            last3Prod: "1:00:00",
-            last3Month: "1:00:00",
-            last12Month: "1:00:00",
-            newBenchmark: "2:00:00",
-            status: "update"
-        }
-    },
-    {
-        productName: "Component Y2",
-        productionId: "CY2-002",
-        package: "Premium",
-        qty: 500,
-        ca: {
-            correct: 85.12,
-            benchmark: 82.91,
-            last3Prod: 83.41,
-            last3Month: 77.95,
-            last12Month: 74.24,
-            newBenchmark: 85.12,
-            status: "update"
-        },
-        toc: {
-            correct: 81.39,
-            benchmark: 76.98,
-            last3Prod: 81.15,
-            last3Month: 81.31,
-            last12Month: 72.12,
-            newBenchmark: 81.39,
-            status: "approved"
-        },
-        time: {
-            correct: "1:45:00",
-            benchmark: "1:30:00",
-            last3Prod: "1:35:00",
-            last3Month: "1:40:00",
-            last12Month: "1:50:00",
-            newBenchmark: "1:45:00",
-            status: "approved"
-        }
-    }
-];
+let costingDataTable = null;
 
 // Initialize dashboard
 function initializeDashboard() {
-    costingData = sampleData;
-    populateTable();
-    updateMLInsights();
-    attachEventListeners();
+    showLoading(true);
+    google.script.run
+        .withSuccessHandler(data => {
+            costingData = data;
+            costingDataTable = $('#costing-table').DataTable({
+                "scrollY": "500px",
+                "scrollCollapse": true,
+                "paging": false
+            });
+            populateTable();
+            updateMLInsights();
+            attachEventListeners();
+            showLoading(false);
+        })
+        .withFailureHandler(error => {
+            console.error('Error importing data:', error);
+            showNotification('Failed to load data from Google Sheet.', 'error');
+            showLoading(false);
+        })
+        .importCostingData();
 }
 
 // Populate table with data
 function populateTable() {
-    const tableBody = document.getElementById('table-body');
-    tableBody.innerHTML = '';
-
-    costingData.forEach((item, index) => {
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td><strong>${item.productName}</strong></td>
-            <td>${item.productionId}</td>
-            <td>${item.package}</td>
-            <td>${item.qty.toLocaleString()}</td>
-            
-            <!-- CA Cost columns -->
-            <td class="cost-cell editable-cell" onclick="editCell(${index}, 'ca.correct')">₹${item.ca.correct.toFixed(2)}</td>
-            <td class="cost-cell">₹${item.ca.benchmark.toFixed(2)}</td>
-            <td class="cost-cell">₹${item.ca.last3Prod.toFixed(2)} ${getTrendIndicator(item.ca.last3Prod, item.ca.benchmark)}</td>
-            <td class="cost-cell">₹${item.ca.last3Month.toFixed(2)} ${getTrendIndicator(item.ca.last3Month, item.ca.benchmark)}</td>
-            <td class="cost-cell">₹${item.ca.last12Month.toFixed(2)} ${getTrendIndicator(item.ca.last12Month, item.ca.benchmark)}</td>
-            <td class="cost-cell editable-cell" onclick="editCell(${index}, 'ca.newBenchmark')">₹${item.ca.newBenchmark.toFixed(2)} ${getDeviationIndicator(item.ca.newBenchmark, item.ca.benchmark)}</td>
-            <td class="status-cell ${getStatusClass(item.ca.status)} editable-cell" onclick="editStatus(${index}, 'ca')">${formatStatus(item.ca.status)}</td>
-            
-            <!-- TOC Cost columns -->
-            <td class="cost-cell editable-cell section-divider" onclick="editCell(${index}, 'toc.correct')">₹${item.toc.correct.toFixed(2)}</td>
-            <td class="cost-cell">₹${item.toc.benchmark.toFixed(2)}</td>
-            <td class="cost-cell">₹${item.toc.last3Prod.toFixed(2)} ${getTrendIndicator(item.toc.last3Prod, item.toc.benchmark)}</td>
-            <td class="cost-cell">₹${item.toc.last3Month.toFixed(2)} ${getTrendIndicator(item.toc.last3Month, item.toc.benchmark)}</td>
-            <td class="cost-cell">₹${item.toc.last12Month.toFixed(2)} ${getTrendIndicator(item.toc.last12Month, item.toc.benchmark)}</td>
-            <td class="cost-cell editable-cell" onclick="editCell(${index}, 'toc.newBenchmark')">₹${item.toc.newBenchmark.toFixed(2)} ${getDeviationIndicator(item.toc.newBenchmark, item.toc.benchmark)}</td>
-            <td class="status-cell ${getStatusClass(item.toc.status)} editable-cell" onclick="editStatus(${index}, 'toc')">${formatStatus(item.toc.status)}</td>
-            
-            <!-- Time columns -->
-            <td class="time-cell editable-cell section-divider" onclick="editCell(${index}, 'time.correct')">${item.time.correct}</td>
-            <td class="time-cell">${item.time.benchmark}</td>
-            <td class="time-cell">${item.time.last3Prod}</td>
-            <td class="time-cell">${item.time.last3Month}</td>
-            <td class="time-cell">${item.time.last12Month}</td>
-            <td class="time-cell editable-cell" onclick="editCell(${index}, 'time.newBenchmark')">${item.time.newBenchmark}</td>
-            <td class="status-cell ${getStatusClass(item.time.status)} editable-cell" onclick="editStatus(${index}, 'time')">${formatStatus(item.time.status)}</td>
-        `;
-        tableBody.appendChild(row);
+    costingDataTable.clear();
+    const rows = costingData.map((item, index) => {
+        return [
+            `<strong>${item.productName}</strong>`,
+            item.productionId,
+            item.package,
+            item.qty.toLocaleString(),
+            `<div class="cost-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'ca.correct')">₹${item.ca.correct.toFixed(2)}</div>`,
+            `<div class="cost-cell">₹${item.ca.benchmark.toFixed(2)}</div>`,
+            `<div class="cost-cell">₹${item.ca.last3Prod.toFixed(2)} ${getTrendIndicator(item.ca.last3Prod, item.ca.benchmark)}</div>`,
+            `<div class="cost-cell">₹${item.ca.last3Month.toFixed(2)} ${getTrendIndicator(item.ca.last3Month, item.ca.benchmark)}</div>`,
+            `<div class="cost-cell">₹${item.ca.last12Month.toFixed(2)} ${getTrendIndicator(item.ca.last12Month, item.ca.benchmark)}</div>`,
+            `<div class="cost-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'ca.newBenchmark')">₹${item.ca.newBenchmark.toFixed(2)} ${getDeviationIndicator(item.ca.newBenchmark, item.ca.benchmark)}</div>`,
+            `<div class="status-cell ${getStatusClass(item.ca.status)}" onclick="editStatus(${index}, 'ca')">${formatStatus(item.ca.status)}</div>`,
+            `<div class="cost-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'toc.correct')">₹${item.toc.correct.toFixed(2)}</div>`,
+            `<div class="cost-cell">₹${item.toc.benchmark.toFixed(2)}</div>`,
+            `<div class="cost-cell">₹${item.toc.last3Prod.toFixed(2)} ${getTrendIndicator(item.toc.last3Prod, item.toc.benchmark)}</div>`,
+            `<div class="cost-cell">₹${item.toc.last3Month.toFixed(2)} ${getTrendIndicator(item.toc.last3Month, item.toc.benchmark)}</div>`,
+            `<div class="cost-cell">₹${item.toc.last12Month.toFixed(2)} ${getTrendIndicator(item.toc.last12Month, item.toc.benchmark)}</div>`,
+            `<div class="cost-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'toc.newBenchmark')">₹${item.toc.newBenchmark.toFixed(2)} ${getDeviationIndicator(item.toc.newBenchmark, item.toc.benchmark)}</div>`,
+            `<div class="status-cell ${getStatusClass(item.toc.status)}" onclick="editStatus(${index}, 'toc')">${formatStatus(item.toc.status)}</div>`,
+            `<div class="time-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'time.correct')">${item.time.correct}</div>`,
+            `<div class="time-cell">${item.time.benchmark}</div>`,
+            `<div class="time-cell">${item.time.last3Prod}</div>`,
+            `<div class="time-cell">${item.time.last3Month}</div>`,
+            `<div class="time-cell">${item.time.last12Month}</div>`,
+            `<div class="time-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'time.newBenchmark')">${item.time.newBenchmark}</div>`,
+            `<div class="status-cell ${getStatusClass(item.time.status)}" onclick="editStatus(${index}, 'time')">${formatStatus(item.time.status)}</div>`,
+        ];
     });
+    costingDataTable.rows.add(rows).draw();
 }
 
 // Helper functions
@@ -147,36 +85,44 @@ function getDeviationIndicator(newBenchmark, currentBenchmark) {
 function getStatusClass(status) {
     switch(status) {
         case 'update': return 'status-update';
-        case 'approved': return 'status-approved';
-        case 'pending': return 'status-pending';
+        case 'no_need': return 'status-no-need';
         default: return 'status-update';
     }
 }
 
 function formatStatus(status) {
     switch(status) {
-        case 'update': return 'Update Benchmark';
-        case 'approved': return 'Approved';
-        case 'pending': return 'Pending Review';
-        default: return 'Update Benchmark';
+        case 'update': return 'Update Benchmark Cost';
+        case 'no_need': return 'No Need';
+        default: return 'Update Benchmark Cost';
     }
 }
 
 // Edit functionality
-function editCell(rowIndex, fieldPath) {
-    currentEditContext = { rowIndex, fieldPath };
+function makeCellEditable(cell, rowIndex, fieldPath) {
     const currentValue = getNestedValue(costingData[rowIndex], fieldPath);
+    $(cell).html(`<input type='text' value='${currentValue}'/>`).find('input').focus()
+        .on('blur', function() {
+            saveCell(this, rowIndex, fieldPath);
+        })
+        .on('keypress', function(e) {
+            if (e.which === 13) {
+                this.blur();
+            }
+        });
+}
 
-    document.getElementById('edit-field').value = fieldPath.replace('.', ' ').toUpperCase();
-    document.getElementById('edit-current-value').value = currentValue;
-    document.getElementById('edit-new-value').value = currentValue;
-    document.getElementById('edit-modal').style.display = 'block';
+function saveCell(input, rowIndex, fieldPath) {
+    const newValue = $(input).val();
+    setNestedValue(costingData[rowIndex], fieldPath, newValue);
+    populateTable();
+    updateMLInsights();
+    showNotification('Data updated successfully!', 'success');
 }
 
 function editStatus(rowIndex, section) {
     const currentStatus = costingData[rowIndex][section].status;
-    const newStatus = currentStatus === 'update' ? 'approved' : 
-                    currentStatus === 'approved' ? 'pending' : 'update';
+    const newStatus = currentStatus === 'update' ? 'no_need' : 'update';
     
     costingData[rowIndex][section].status = newStatus;
     populateTable();
@@ -193,22 +139,6 @@ function setNestedValue(obj, path, value) {
     const last = keys.pop();
     const target = keys.reduce((o, k) => o[k], obj);
     target[last] = isNaN(value) ? value : parseFloat(value);
-}
-
-function saveEdit() {
-    if (currentEditContext) {
-        const newValue = document.getElementById('edit-new-value').value;
-        setNestedValue(costingData[currentEditContext.rowIndex], currentEditContext.fieldPath, newValue);
-        populateTable();
-        updateMLInsights();
-        closeModal();
-        showNotification('Data updated successfully!', 'success');
-    }
-}
-
-function closeModal() {
-    document.getElementById('edit-modal').style.display = 'none';
-    currentEditContext = null;
 }
 
 // AI-Powered Analysis and Recommendations
