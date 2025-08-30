@@ -95,30 +95,30 @@ function populateTable() {
             <td>${item.qty.toLocaleString()}</td>
             
             <!-- CA Cost columns -->
-            <td class="cost-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'ca.correct')">₹${item.ca.correct.toFixed(2)}</td>
+            <td class="cost-cell editable-cell" onclick="editCell(${index}, 'ca.correct')">₹${item.ca.correct.toFixed(2)}</td>
             <td class="cost-cell">₹${item.ca.benchmark.toFixed(2)}</td>
             <td class="cost-cell">₹${item.ca.last3Prod.toFixed(2)} ${getTrendIndicator(item.ca.last3Prod, item.ca.benchmark)}</td>
             <td class="cost-cell">₹${item.ca.last3Month.toFixed(2)} ${getTrendIndicator(item.ca.last3Month, item.ca.benchmark)}</td>
             <td class="cost-cell">₹${item.ca.last12Month.toFixed(2)} ${getTrendIndicator(item.ca.last12Month, item.ca.benchmark)}</td>
-            <td class="cost-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'ca.newBenchmark')">₹${item.ca.newBenchmark.toFixed(2)} ${getDeviationIndicator(item.ca.newBenchmark, item.ca.benchmark)}</td>
+            <td class="cost-cell editable-cell" onclick="editCell(${index}, 'ca.newBenchmark')">₹${item.ca.newBenchmark.toFixed(2)} ${getDeviationIndicator(item.ca.newBenchmark, item.ca.benchmark)}</td>
             <td class="status-cell ${getStatusClass(item.ca.status)} editable-cell" onclick="editStatus(${index}, 'ca')">${formatStatus(item.ca.status)}</td>
             
             <!-- TOC Cost columns -->
-            <td class="cost-cell editable-cell section-divider" onclick="makeCellEditable(this, ${index}, 'toc.correct')">₹${item.toc.correct.toFixed(2)}</td>
+            <td class="cost-cell editable-cell section-divider" onclick="editCell(${index}, 'toc.correct')">₹${item.toc.correct.toFixed(2)}</td>
             <td class="cost-cell">₹${item.toc.benchmark.toFixed(2)}</td>
             <td class="cost-cell">₹${item.toc.last3Prod.toFixed(2)} ${getTrendIndicator(item.toc.last3Prod, item.toc.benchmark)}</td>
             <td class="cost-cell">₹${item.toc.last3Month.toFixed(2)} ${getTrendIndicator(item.toc.last3Month, item.toc.benchmark)}</td>
             <td class="cost-cell">₹${item.toc.last12Month.toFixed(2)} ${getTrendIndicator(item.toc.last12Month, item.toc.benchmark)}</td>
-            <td class="cost-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'toc.newBenchmark')">₹${item.toc.newBenchmark.toFixed(2)} ${getDeviationIndicator(item.toc.newBenchmark, item.toc.benchmark)}</td>
+            <td class="cost-cell editable-cell" onclick="editCell(${index}, 'toc.newBenchmark')">₹${item.toc.newBenchmark.toFixed(2)} ${getDeviationIndicator(item.toc.newBenchmark, item.toc.benchmark)}</td>
             <td class="status-cell ${getStatusClass(item.toc.status)} editable-cell" onclick="editStatus(${index}, 'toc')">${formatStatus(item.toc.status)}</td>
             
             <!-- Time columns -->
-            <td class="time-cell editable-cell section-divider" onclick="makeCellEditable(this, ${index}, 'time.correct')">${item.time.correct}</td>
+            <td class="time-cell editable-cell section-divider" onclick="editCell(${index}, 'time.correct')">${item.time.correct}</td>
             <td class="time-cell">${item.time.benchmark}</td>
             <td class="time-cell">${item.time.last3Prod}</td>
             <td class="time-cell">${item.time.last3Month}</td>
             <td class="time-cell">${item.time.last12Month}</td>
-            <td class="time-cell editable-cell" onclick="makeCellEditable(this, ${index}, 'time.newBenchmark')">${item.time.newBenchmark}</td>
+            <td class="time-cell editable-cell" onclick="editCell(${index}, 'time.newBenchmark')">${item.time.newBenchmark}</td>
             <td class="status-cell ${getStatusClass(item.time.status)} editable-cell" onclick="editStatus(${index}, 'time')">${formatStatus(item.time.status)}</td>
         `;
         tableBody.appendChild(row);
@@ -163,18 +163,14 @@ function formatStatus(status) {
 }
 
 // Edit functionality
-function makeCellEditable(cell, rowIndex, fieldPath) {
+function editCell(rowIndex, fieldPath) {
+    currentEditContext = { rowIndex, fieldPath };
     const currentValue = getNestedValue(costingData[rowIndex], fieldPath);
-    cell.innerHTML = `<input type='text' value='${currentValue}' onblur='saveCell(this, ${rowIndex}, "${fieldPath}")' onkeypress='if(event.key === "Enter") this.blur()'/>`;
-    cell.querySelector('input').focus();
-}
 
-function saveCell(input, rowIndex, fieldPath) {
-    const newValue = input.value;
-    setNestedValue(costingData[rowIndex], fieldPath, newValue);
-    populateTable();
-    updateMLInsights();
-    showNotification('Data updated successfully!', 'success');
+    document.getElementById('edit-field').value = fieldPath.replace('.', ' ').toUpperCase();
+    document.getElementById('edit-current-value').value = currentValue;
+    document.getElementById('edit-new-value').value = currentValue;
+    document.getElementById('edit-modal').style.display = 'block';
 }
 
 function editStatus(rowIndex, section) {
@@ -197,6 +193,22 @@ function setNestedValue(obj, path, value) {
     const last = keys.pop();
     const target = keys.reduce((o, k) => o[k], obj);
     target[last] = isNaN(value) ? value : parseFloat(value);
+}
+
+function saveEdit() {
+    if (currentEditContext) {
+        const newValue = document.getElementById('edit-new-value').value;
+        setNestedValue(costingData[currentEditContext.rowIndex], currentEditContext.fieldPath, newValue);
+        populateTable();
+        updateMLInsights();
+        closeModal();
+        showNotification('Data updated successfully!', 'success');
+    }
+}
+
+function closeModal() {
+    document.getElementById('edit-modal').style.display = 'none';
+    currentEditContext = null;
 }
 
 // AI-Powered Analysis and Recommendations
@@ -579,6 +591,21 @@ function exportData(format) {
         .withSuccessHandler(() => showNotification(`Data exported to ${format.toUpperCase()} successfully!`, 'success'))
         .withFailureHandler(() => showNotification(`Failed to export data to ${format.toUpperCase()}.`, 'error'))
         .exportData(costingData, format);
+}
+
+function bulkUpdateBenchmarks() {
+    const confirmed = confirm('Are you sure you want to bulk update all benchmark costs?');
+    if (confirmed) {
+        costingData.forEach(item => {
+            item.ca.benchmark = item.ca.newBenchmark;
+            item.toc.benchmark = item.toc.newBenchmark;
+            item.ca.status = 'approved';
+            item.toc.status = 'approved';
+        });
+        populateTable();
+        updateMLInsights();
+        showNotification('Bulk benchmark update completed!', 'success');
+    }
 }
 
 // Utility functions

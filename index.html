@@ -79,8 +79,9 @@
             <div class="controls-row">
                 <button class="btn btn-primary" onclick="runAIAnalysis()">🤖 Run AI Cost Analysis</button>
                 <button class="btn btn-primary" onclick="generateSmartRecommendations()">💡 Smart Recommendations</button>
+                <button class="btn btn-primary" onclick="bulkUpdateBenchmarks()">🔄 Bulk Update Benchmarks</button>
                 <button class="btn btn-secondary" onclick="importFromGoogleSheets()">📥 Load from Sheets</button>
-                <button class="btn btn-primary" onclick="saveToGoogleSheets()">💾 Save All to Sheets</button>
+                <button class="btn btn-secondary" onclick="saveToGoogleSheets()">💾 Save to Sheets</button>
             </div>
         </div>
 
@@ -147,6 +148,29 @@
             <div class="chart-container">
                 <div class="chart-title">Production Efficiency Metrics</div>
                 <div id="efficiency-metrics"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div class="edit-modal" id="edit-modal">
+        <div class="modal-content">
+            <div class="modal-header">Edit Cost Data</div>
+            <div class="form-group">
+                <label>Field</label>
+                <input type="text" id="edit-field" readonly>
+            </div>
+            <div class="form-group">
+                <label>Current Value</label>
+                <input type="text" id="edit-current-value" readonly>
+            </div>
+            <div class="form-group">
+                <label>New Value</label>
+                <input type="text" id="edit-new-value">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveEdit()">Save Changes</button>
             </div>
         </div>
     </div>
