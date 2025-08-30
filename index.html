@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Advanced Costing Review Dashboard</title>
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.11.5/css/jquery.dataTables.css">
+    <script type="text/javascript" charset="utf8" src="https://code.jquery.com/jquery-3.5.1.js"></script>
+    <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.js"></script>
     <?!= HtmlService.createHtmlOutputFromFile('styles').getContent(); ?>
 </head>
 <body>
@@ -39,43 +42,7 @@
 
         <!-- Controls Panel -->
         <div class="controls-panel">
-            <div class="controls-row">
-                <div class="control-group">
-                    <label>Product Filter</label>
-                    <select class="control-input" id="product-filter">
-                        <option value="">All Products</option>
-                        <option value="product-a">Product A</option>
-                        <option value="product-b">Product B</option>
-                    </select>
-                </div>
-                <div class="control-group">
-                    <label>Status Filter</label>
-                    <select class="control-input" id="status-filter">
-                        <option value="">All Status</option>
-                        <option value="update">Update Benchmark Cost</option>
-                        <option value="approved">Approved</option>
-                    </select>
-                </div>
-                <div class="control-group">
-                    <label>Cost Variance</label>
-                    <select class="control-input" id="variance-filter">
-                        <option value="">All Variance</option>
-                        <option value="high">High (>10%)</option>
-                        <option value="medium">Medium (5-10%)</option>
-                        <option value="low">Low (<5%)</option>
-                    </select>
-                </div>
-                <div class="control-group">
-                    <label>Search</label>
-                    <input type="text" class="control-input" id="search-input" placeholder="Search products...">
-                </div>
-                <button class="btn btn-primary" onclick="applyFilters()">Apply Filters</button>
-                <button class="btn btn-secondary" onclick="resetFilters()">Reset</button>
-                <div class="export-options">
-                    <button class="btn btn-secondary" onclick="exportData('excel')">📊 Export Excel</button>
-                    <button class="btn btn-secondary" onclick="exportData('pdf')">📄 Export PDF</button>
-                </div>
-            </div>
+            
             <div class="controls-row">
                 <button class="btn btn-primary" onclick="runAIAnalysis()">🤖 Run AI Cost Analysis</button>
                 <button class="btn btn-primary" onclick="generateSmartRecommendations()">💡 Smart Recommendations</button>
@@ -101,31 +68,31 @@
                         </tr>
                         <tr>
                             <!-- CA Cost columns -->
-                            <th>Correct CA</th>
+                            <th data-field-path="ca.correct">Correct CA</th>
                             <th>Benchmark Cost</th>
                             <th>Last 3 Production Avg</th>
                             <th>Last 3 Month Avg</th>
                             <th>Last 12 Month Avg</th>
-                            <th>New Benchmark</th>
-                            <th>Status</th>
+                            <th data-field-path="ca.newBenchmark">New Benchmark</th>
+                            <th data-section="ca">Status</th>
                             
                             <!-- TOC Cost columns -->
-                            <th class="section-divider">Correct TOC</th>
+                            <th class="section-divider" data-field-path="toc.correct">Correct TOC</th>
                             <th>Benchmark Cost</th>
                             <th>Last 3 Production Avg</th>
                             <th>Last 3 Month Avg</th>
                             <th>Last 12 Month Avg</th>
-                            <th>New Benchmark</th>
-                            <th>Status</th>
+                            <th data-field-path="toc.newBenchmark">New Benchmark</th>
+                            <th data-section="toc">Status</th>
                             
                             <!-- Time columns -->
-                            <th class="section-divider">Correct Time</th>
+                            <th class="section-divider" data-field-path="time.correct">Correct Time</th>
                             <th>Benchmark Time</th>
                             <th>Last 3 Production Avg</th>
                             <th>Last 3 Month Avg</th>
                             <th>Last 12 Month Avg</th>
-                            <th>New Benchmark</th>
-                            <th>Status</th>
+                            <th data-field-path="time.newBenchmark">New Benchmark</th>
+                            <th data-section="time">Status</th>
                         </tr>
                     </thead>
                     <tbody id="table-body">
