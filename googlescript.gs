@@ -272,6 +272,12 @@ function normalizeStatus(status) {
  */
 function normalizeTime(timeValue) {
   if (!timeValue) return '0:00:00';
+
+  // If the value is a Date object, format it directly
+  if (timeValue instanceof Date) {
+    // Format the date object to HH:mm:ss. Using "UTC" is important to avoid timezone shifts.
+    return Utilities.formatDate(timeValue, "UTC", "HH:mm:ss");
+  }
   
   const timeStr = timeValue.toString().trim();
   
