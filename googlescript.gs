@@ -5,8 +5,8 @@
  */
 
 const CONFIG = {
-  // Replace with your actual OpenAI API key
-  OPENAI_API_KEY: 'your-openai-api-key-here',
+  // API key is fetched from Script Properties for security
+  OPENAI_API_KEY: PropertiesService.getScriptProperties().getProperty('openai_key'),
   
   // Google Sheets configuration
   SHEET_ID: '1J17ADExIvGd8WNFODQtouhv9kWnU9aPzPnaMbazmwtg',
@@ -22,6 +22,7 @@ const CONFIG = {
     productionId: 'B',     // or use column index: 2
     package: 'D',          // or use column index: 3
     qty: 'N',              // or use column index: 4
+    notes: 'BJ',           // Notes column
     
     // CA Cost columns
     caCorrect: 'CX',        // Column for CA Correct value
@@ -38,7 +39,7 @@ const CONFIG = {
     tocLast3Prod: 'DG',
     tocLast3Month: 'DH',
     tocLast12Month: 'DI',
-    tocNewBenchmark: 'DJ',
+    tocNewBenchmark: 'DE',
     tocStatus: 'DK',
 
     // Time columns
@@ -47,7 +48,7 @@ const CONFIG = {
     timeLast3Prod: 'DN',
     timeLast3Month: 'DO',
     timeLast12Month: 'DP',
-    timeNewBenchmark: 'DQ',
+    timeNewBenchmark: 'DL',
     timeStatus: 'DR'
   },
   
@@ -225,6 +226,7 @@ function createItemFromData(data) {
     productionId: (data.productionId || '').toString().trim(),
     package: (data.package || '').toString().trim(),
     qty: parseInt(data.qty) || 0,
+    notes: (data.notes || '').toString().trim(),
     ca: {
       correct: parseFloat(data.caCorrect) || 0,
       benchmark: parseFloat(data.caBenchmark) || 0,
@@ -264,7 +266,7 @@ function normalizeStatus(status) {
   if (statusStr.includes('no need')) return 'no_need';
   if (statusStr.includes('update benchmark cost')) return 'update';
   
-  return 'update'; // Default to 'update'
+  return 'no_need'; // Default to 'update'
 }
 
 /**
@@ -303,44 +305,6 @@ function normalizeTime(timeValue) {
   return '0:00:00';
 }
 
-/**
- * Get configuration template for easy setup
- */
-function getConfigurationTemplate() {
-  return {
-    message: "Copy and modify this configuration in your CONFIG object",
-    example: {
-      HEADER_ROW: 1,
-      DATA_START_ROW: 2,
-      COLUMN_MAPPING: {
-        productName: 'A',        // Product name column
-        productionId: 'B',       // Production ID column
-        package: 'C',            // Package type column
-        qty: 'D',                // Quantity column
-        caCorrect: 'E',          // CA Correct cost
-        caBenchmark: 'F',        // CA Benchmark cost
-        caNewBenchmark: 'J',     // CA New Benchmark
-        caStatus: 'K',           // CA Status
-        tocCorrect: 'L',         // TOC Correct cost
-        tocBenchmark: 'M',       // TOC Benchmark cost
-        tocNewBenchmark: 'Q',    // TOC New Benchmark
-        tocStatus: 'R'           // TOC Status
-      },
-      FILTER_CONDITIONS: {
-        skipEmptyProduct: true,
-        skipEmptyProductionId: true,
-        includeStatuses: ['update', 'pending'], // Only these statuses
-        includePackages: ['Standard', 'Premium'], // Only these packages
-        minQuantity: 1,
-        skipZeroCosts: true,
-        customFilter: function(data) {
-          // Example: Only include products with cost > 50
-          return (data.caBenchmark || 0) > 50;
-        }
-      }
-    }
-  };
-}
 
 
 /**
@@ -410,7 +374,13 @@ function runOpenAIAnalysis(deviations) {
  * Build prompt for OpenAI analysis
  */
 function buildAnalysisPrompt(deviations) {
-  let prompt = `You are a cost analysis expert. Analyze the following cost deviations and provide recommendations:
+  const formatPromptValue = (value, prefix = '₹') => {
+    if (typeof value === 'string') return value; // 'No data'
+    if (typeof value !== 'number') return value;
+    return `${prefix}${value.toFixed(2)}`;
+  };
+
+  let prompt = `You are a cost analysis expert. For each item below, decide if the benchmark cost needs to be updated based on recent data.
 
 COST DEVIATIONS:
 `;
@@ -419,30 +389,40 @@ COST DEVIATIONS:
     prompt += `
 ${index + 1}. Product: ${dev.product} (${dev.productionId})
    Type: ${dev.type}
-   Current Benchmark: ₹${dev.currentBenchmark.toFixed(2)}
-   Proposed Benchmark: ₹${dev.proposedBenchmark.toFixed(2)}
+   Current Benchmark: ${formatPromptValue(dev.currentBenchmark)}
+   Proposed Benchmark: ${formatPromptValue(dev.proposedBenchmark)}
    Deviation: ${dev.deviation.toFixed(1)}%
-   Last 3 Production Avg: ₹${dev.last3Avg.toFixed(2)}
-   Last 3 Month Avg: ₹${dev.last3MonthAvg.toFixed(2)}
-   Last 12 Month Avg: ₹${dev.last12MonthAvg.toFixed(2)}
+   Last 3 Production Avg: ${formatPromptValue(dev.last3Avg)}
+   Last 3 Month Avg: ${formatPromptValue(dev.last3MonthAvg)}
+   Last 12 Month Avg: ${formatPromptValue(dev.last12MonthAvg)}
 `;
+    if (dev.notes) {
+        prompt += `   Human Notes: ${dev.notes}\n`;
+    }
   });
 
   prompt += `
 
-For each deviation, provide:
-1. RECOMMENDATION: APPROVE, REJECT, or CAUTION
-2. REASONING: Brief explanation (max 100 words)
-3. CONFIDENCE: Percentage (70-95%)
-4. TREND: Increasing, Decreasing, or Stable
+For each deviation, provide your recommendation in the following JSON format as an array of objects. Do not include any other text or explanations outside of the JSON.
 
-Guidelines:
-- REJECT if deviation > 15% and trend is increasing
-- CAUTION if deviation 10-15% 
-- APPROVE if deviation < 10% or decreasing costs
-- Consider production volume and historical trends
+[
+  {
+    "status": "update" or "no_need",
+    "decisionNotes": "Your brief analysis and reasoning here (max 50 words)."
+  }
+]
 
-Respond in JSON format with array of recommendations.`;
+Guidelines for your decision:
+- Base your decision on whether the 'Proposed Benchmark' is a realistic reflection of recent costs (Last 3 Production Avg, Last 3 Month Avg).
+- Use any provided 'Human Notes' as additional context, but do not base your decision solely on them.
+- If the 'Proposed Benchmark' aligns with recent trends and data, the status should be 'update'.
+- If the 'Proposed Benchmark' seems anomalous, or if the deviation is insignificant, the status should be 'no_need'.
+- If crucial data points are missing (indicated by "No data"), state this in your notes and be cautious. You might recommend 'no_need' pending more data.
+- Your 'decisionNotes' should be a concise summary of your reasoning.
+
+Data Security:
+- The data provided is confidential. Do not repeat or disclose any part of the input data in your response, other than what is explicitly required by the JSON format.
+- Your 'decisionNotes' should be a summary of your analysis, not a copy of the input data.`;
 
   return prompt;
 }
@@ -491,47 +471,24 @@ function callOpenAI(prompt) {
  */
 function parseAIResponse(aiResponse, deviations) {
   try {
-    const recommendations = JSON.parse(aiResponse);
+    // The AI response might be enclosed in ```json ... ```, so let's strip that.
+    const cleanedResponse = aiResponse.replace(/```json\n?/g, '').replace(/\n?```/g, '');
+    const recommendations = JSON.parse(cleanedResponse);
     
     return deviations.map((dev, index) => {
       const aiRec = recommendations[index] || {};
       
       return {
         ...dev,
-        recommendation: formatRecommendation(aiRec.recommendation, aiRec.reasoning, dev.deviation),
-        confidence: aiRec.confidence || 85,
-        trend: aiRec.trend || analyzeTrend(dev),
-        riskLevel: calculateRiskLevel(dev.deviation)
+        status: aiRec.status || 'no_need', // Default to 'no_need' if missing
+        decisionNotes: aiRec.decisionNotes || 'AI response format error.'
       };
     });
     
   } catch (error) {
-    console.error('Error parsing AI response:', error);
+    console.error('Error parsing AI response:', error, 'Raw response:', aiResponse);
+    // Fallback to local analysis if parsing fails
     return generateLocalAnalysis(deviations);
-  }
-}
-
-/**
- * Format recommendation with emoji and action
- */
-function formatRecommendation(action, reasoning, deviation) {
-  const emoji = action === 'APPROVE' ? '✅' : action === 'REJECT' ? '❌' : '⚠️';
-  return `${emoji} ${action}: ${reasoning || getDefaultReasoning(action, deviation)}`;
-}
-
-/**
- * Get default reasoning based on action and deviation
- */
-function getDefaultReasoning(action, deviation) {
-  switch(action) {
-    case 'APPROVE':
-      return `${deviation.toFixed(1)}% deviation is within acceptable limits based on production data.`;
-    case 'REJECT':
-      return `${deviation.toFixed(1)}% increase is too high and requires cost optimization review.`;
-    case 'CAUTION':
-      return `${deviation.toFixed(1)}% increase needs careful monitoring and stakeholder approval.`;
-    default:
-      return `Deviation of ${deviation.toFixed(1)}% requires analysis.`;
   }
 }
 
@@ -540,54 +497,30 @@ function getDefaultReasoning(action, deviation) {
  */
 function generateLocalAnalysis(deviations) {
   return deviations.map(dev => {
-    const trend = analyzeTrend(dev);
-    const riskLevel = calculateRiskLevel(dev.deviation);
-    
-    let action, reasoning;
-    
-    if (dev.deviation > 15 && trend === 'Increasing') {
-      action = 'REJECT';
-      reasoning = 'High deviation with increasing trend indicates cost control issues.';
-    } else if (dev.deviation > 10) {
-      action = 'CAUTION';
-      reasoning = 'Moderate deviation requires management approval and monitoring.';
-    } else if (dev.deviation < 0) {
-      action = 'APPROVE';
-      reasoning = 'Cost reduction should be implemented immediately.';
+    let status = 'no_need';
+    let decisionNotes = '';
+    const deviation = parseFloat(dev.deviation);
+
+    if (dev.proposedBenchmark === 'No data') {
+        status = 'no_need';
+        decisionNotes = 'Cannot recommend update without a proposed benchmark.';
+    } else if (deviation > 10) {
+        status = 'update';
+        decisionNotes = `Significant deviation of ${deviation.toFixed(1)}% suggests an update is needed.`;
+    } else if (deviation > 5) {
+        status = 'update';
+        decisionNotes = `Moderate deviation of ${deviation.toFixed(1)}% suggests an update might be needed. Review recommended.`;
     } else {
-      action = 'APPROVE';
-      reasoning = 'Deviation is within acceptable limits.';
+        status = 'no_need';
+        decisionNotes = `Deviation of ${deviation.toFixed(1)}% is within acceptable limits. No update needed.`;
     }
-    
+
     return {
       ...dev,
-      recommendation: formatRecommendation(action, reasoning, dev.deviation),
-      confidence: Math.floor(Math.random() * 15) + 80,
-      trend: trend,
-      riskLevel: riskLevel
+      status: status,
+      decisionNotes: decisionNotes + ' (Local Fallback Analysis)'
     };
   });
-}
-
-/**
- * Analyze cost trend
- */
-function analyzeTrend(deviation) {
-  const recent = (deviation.last3Avg + deviation.last3MonthAvg) / 2;
-  const historical = deviation.last12MonthAvg;
-  
-  if (recent > historical * 1.1) return 'Increasing';
-  if (recent < historical * 0.9) return 'Decreasing';
-  return 'Stable';
-}
-
-/**
- * Calculate risk level based on deviation
- */
-function calculateRiskLevel(deviation) {
-  if (Math.abs(deviation) > 20) return 'High';
-  if (Math.abs(deviation) > 10) return 'Medium';
-  return 'Low';
 }
 
 /**
