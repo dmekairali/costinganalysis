@@ -13,11 +13,11 @@ function initializeDashboard() {
             costingData = data;
             filteredCostingData = data; // Initialize filtered data
             costingDataTable = $('#costing-table').DataTable({
-                "scrollY": "500px",
+                "scrollY": "75vh",
                 "scrollX": true,
                 "scrollCollapse": true,
                 "paging": false,
-                "ordering": false,
+                "ordering": true,
                 "info": false,
                 "fixedHeader": {
                     "header": true,
@@ -52,6 +52,8 @@ function populateTable() {
             item.productionId,
             item.package,
             item.qty.toLocaleString(),
+            `<div class="notes-col">${item.notes}</div>`,
+            `<div class="ai-notes-col">${item.aiNotes || ''}</div>`,
             `<div class="cost-cell editable-cell" onclick="makeCellEditable(this, ${originalIndex}, 'ca.correct')">₹${item.ca.correct.toFixed(2)}</div>`,
             `<div class="cost-cell">₹${item.ca.benchmark.toFixed(2)}</div>`,
             `<div class="cost-cell">₹${item.ca.last3Prod.toFixed(2)}</div>`,
@@ -210,126 +212,88 @@ async function runAIAnalysis() {
         return;
     }
     
-    try {
-        google.script.run
-            .withSuccessHandler(handleAIAnalysisSuccess)
-            .withFailureHandler(handleAIAnalysisFailure)
-            .runOpenAIAnalysis(deviations);
-            
-    } catch (error) {
-        showLoading(false);
-        showNotification('AI analysis failed. Using fallback analysis.', 'error');
-        generateFallbackRecommendations(deviations);
-    }
+    google.script.run
+        .withSuccessHandler(handleAIAnalysisSuccess)
+        .withFailureHandler(handleAIAnalysisFailure)
+        .runOpenAIAnalysis(deviations);
 }
 
 function handleAIAnalysisSuccess(aiRecommendations) {
     showLoading(false);
-    displayAIRecommendations(aiRecommendations);
-    highlightAIRecommendations(aiRecommendations);
-    showNotification('AI analysis complete! Check recommendations panel.', 'success');
+
+    aiRecommendations.forEach(rec => {
+        const item = costingData[rec.index];
+        if (!item) return; // Skip if item not found
+
+        // Update status based on recommendation type
+        const section = rec.type === 'CA Cost' ? 'ca' : 'toc';
+        item[section].status = rec.status;
+        
+        // Add or update AI notes, appending if multiple recommendations exist for one item
+        if (item.aiNotes) {
+            item.aiNotes += `\n${rec.type}: ${rec.decisionNotes}`;
+        } else {
+            item.aiNotes = `${rec.type}: ${rec.decisionNotes}`;
+        }
+    });
+
+    filterAndPopulate(); // This will re-draw the table with the new data
+    showNotification('AI analysis complete. Table has been updated with recommendations.', 'success');
 }
 
 function handleAIAnalysisFailure(error) {
     showLoading(false);
     console.error('AI Analysis Error:', error);
-    const deviations = analyzeDeviations();
-    generateFallbackRecommendations(deviations);
-    showNotification('AI analysis failed. Using fallback analysis.', 'error');
+    showNotification('An error occurred while communicating with the AI service. Please try again.', 'error');
 }
 
 function analyzeDeviations() {
     const deviations = [];
+    const formatValue = (value) => value === 0 ? 'No data' : value;
+
     costingData.forEach((item, index) => {
         if (item.ca.benchmark > 0) {
             const caDeviation = ((item.ca.newBenchmark - item.ca.benchmark) / item.ca.benchmark) * 100;
             if (caDeviation > 5) {
-                deviations.push({ index, product: item.productName, productionId: item.productionId, type: 'CA Cost', currentBenchmark: item.ca.benchmark, proposedBenchmark: item.ca.newBenchmark, deviation: caDeviation, last3Avg: item.ca.last3Prod, last3MonthAvg: item.ca.last3Month, last12MonthAvg: item.ca.last12Month });
+                const devData = {
+                    index,
+                    product: item.productName,
+                    productionId: item.productionId,
+                    type: 'CA Cost',
+                    currentBenchmark: formatValue(item.ca.benchmark),
+                    proposedBenchmark: formatValue(item.ca.newBenchmark),
+                    deviation: caDeviation,
+                    last3Avg: formatValue(item.ca.last3Prod),
+                    last3MonthAvg: formatValue(item.ca.last3Month),
+                    last12MonthAvg: formatValue(item.ca.last12Month)
+                };
+                if (item.notes) devData.notes = item.notes;
+                deviations.push(devData);
             }
         }
         if (item.toc.benchmark > 0) {
             const tocDeviation = ((item.toc.newBenchmark - item.toc.benchmark) / item.toc.benchmark) * 100;
             if (tocDeviation > 5) {
-                deviations.push({ index, product: item.productName, productionId: item.productionId, type: 'TOC Cost', currentBenchmark: item.toc.benchmark, proposedBenchmark: item.toc.newBenchmark, deviation: tocDeviation, last3Avg: item.toc.last3Prod, last3MonthAvg: item.toc.last3Month, last12MonthAvg: item.toc.last12Month });
+                const devData = {
+                    index,
+                    product: item.productName,
+                    productionId: item.productionId,
+                    type: 'TOC Cost',
+                    currentBenchmark: formatValue(item.toc.benchmark),
+                    proposedBenchmark: formatValue(item.toc.newBenchmark),
+                    deviation: tocDeviation,
+                    last3Avg: formatValue(item.toc.last3Prod),
+                    last3MonthAvg: formatValue(item.toc.last3Month),
+                    last12MonthAvg: formatValue(item.toc.last12Month)
+                };
+                if (item.notes) devData.notes = item.notes;
+                deviations.push(devData);
             }
         }
     });
     return deviations;
 }
 
-function generateFallbackRecommendations(deviations) {
-    const recommendations = deviations.map(dev => {
-        const trend = analyzeTrend(dev);
-        const riskLevel = calculateRiskLevel(dev);
-        const recommendation = generateRecommendation(dev, trend, riskLevel);
-        return { ...dev, trend, riskLevel, recommendation, confidence: Math.floor(Math.random() * 20) + 75 };
-    });
-    displayAIRecommendations(recommendations);
-    highlightAIRecommendations(recommendations);
-}
-
-function analyzeTrend(deviation) {
-    const recent = (deviation.last3Avg + deviation.last3MonthAvg) / 2;
-    const historical = deviation.last12MonthAvg;
-    if (recent > historical * 1.1) return 'Increasing';
-    if (recent < historical * 0.9) return 'Decreasing';
-    return 'Stable';
-}
-
-function calculateRiskLevel(deviation) {
-    if (deviation.deviation > 20) return 'High';
-    if (deviation.deviation > 10) return 'Medium';
-    return 'Low';
-}
-
-function generateRecommendation(dev, trend, riskLevel) {
-    const isIncrease = dev.deviation > 0;
-    if (isIncrease && riskLevel === 'High' && trend === 'Increasing') return `❌ REJECT: ${dev.deviation.toFixed(1)}% increase is too high. Current trend shows continued cost escalation. Investigate cost drivers before approval.`;
-    if (isIncrease && riskLevel === 'Medium' && trend === 'Stable') return `⚠️ CAUTION: ${dev.deviation.toFixed(1)}% increase. Consider phased implementation or seek cost reduction alternatives.`;
-    if (isIncrease && riskLevel === 'Low') return `✅ APPROVE: ${dev.deviation.toFixed(1)}% increase is acceptable based on recent production data.`;
-    if (!isIncrease) return `✅ APPROVE: Cost reduction of ${Math.abs(dev.deviation).toFixed(1)}% should be implemented immediately.`;
-    return `📊 REVIEW: Requires detailed analysis. Deviation of ${dev.deviation.toFixed(1)}% needs stakeholder review.`;
-}
-
-function displayAIRecommendations(recommendations) {
-    let modalContent = `<div style="max-height: 400px; overflow-y: auto;"><h3 style="color: #667eea; margin-bottom: 20px;">🤖 AI Analysis Results</h3>`;
-    recommendations.forEach(rec => {
-        const statusColor = rec.recommendation.includes('APPROVE') ? '#28a745' : rec.recommendation.includes('REJECT') ? '#dc3545' : '#ffc107';
-        modalContent += `<div style="border-left: 4px solid ${statusColor}; padding: 15px; margin: 15px 0; background: #f8f9fa; border-radius: 5px;"><h4 style="margin: 0 0 10px 0;">${rec.product} - ${rec.type}</h4><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;"><div><strong>Current:</strong> ₹${rec.currentBenchmark.toFixed(2)}</div><div><strong>Proposed:</strong> ₹${rec.proposedBenchmark.toFixed(2)}</div><div><strong>Deviation:</strong> ${rec.deviation.toFixed(1)}%</div><div><strong>Trend:</strong> ${rec.trend}</div></div><div style="background: white; padding: 10px; border-radius: 3px; font-weight: 600;">${rec.recommendation}</div><div style="text-align: right; margin-top: 8px; font-size: 12px; color: #666;">AI Confidence: ${rec.confidence}%</div></div>`;
-    });
-    modalContent += '</div>';
-    const aiModal = document.createElement('div');
-    aiModal.style.cssText = `position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(5px); z-index: 1001;`;
-    aiModal.innerHTML = `<div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border-radius: 15px; padding: 30px; max-width: 800px; width: 90%;">${modalContent}<div style="text-align: center; margin-top: 20px;"><button onclick="this.closest('div[style*=\"position: fixed\"]').remove()" class="btn btn-primary">Close</button><button onclick="applyAIRecommendations(${JSON.stringify(recommendations).replace(/"/g, '&quot;')}); this.closest('div[style*=\"position: fixed\"]').remove()" class="btn btn-secondary" style="margin-left: 10px;">Apply Recommendations</button></div></div>`;
-    document.body.appendChild(aiModal);
-}
-
-function highlightAIRecommendations(recommendations) {
-    recommendations.forEach(rec => {
-        const row = document.querySelectorAll('#table-body tr')[rec.index];
-        if (row) {
-            row.style.background = rec.recommendation.includes('REJECT') ? 'rgba(220, 53, 69, 0.1)' : rec.recommendation.includes('APPROVE') ? 'rgba(40, 167, 69, 0.1)' : 'rgba(255, 193, 7, 0.1)';
-            row.classList.add('highlight-recommendation');
-        }
-    });
-}
-
-function applyAIRecommendations(recommendations) {
-    recommendations.forEach(rec => {
-        if (rec.recommendation.includes('APPROVE')) {
-            if (rec.type === 'CA Cost') {
-                costingData[rec.index].ca.benchmark = rec.proposedBenchmark;
-                costingData[rec.index].ca.status = 'approved';
-            } else {
-                costingData[rec.index].toc.benchmark = rec.proposedBenchmark;
-                costingData[rec.index].toc.status = 'approved';
-            }
-        }
-    });
-    filterAndPopulate();
-    updateMLInsights();
-    showNotification('AI recommendations applied successfully!', 'success');
-}
 
 function generateSmartRecommendations() {
     const deviations = analyzeDeviations();
