@@ -1,434 +1,397 @@
 <script>
-// Global variables
-let costingData = [];
-let filteredCostingData = [];
-let currentEditContext = null;
-let costingDataTable = null;
+// =================================================================================
+// Global Variables & State Management
+// =================================================================================
+let sfgCostingData = [];
+let fgCostingData = [];
+let sfgFilteredCostingData = [];
+let fgFilteredCostingData = [];
+let sfgDataTable = null;
+let fgDataTable = null;
+let activeSystem = 'sfg'; // 'sfg' or 'fg'
+let sfgLastRefresh = null;
+let fgLastRefresh = null;
+let currentEditContext = null; // To store { rowIndex, fieldPath } for the modal
 
-// Initialize dashboard
+// =================================================================================
+// Initialization
+// =================================================================================
+$(document).ready(initializeDashboard);
+
 function initializeDashboard() {
     showLoading(true);
-    google.script.run
-        .withSuccessHandler(data => {
-            costingData = data;
-            filteredCostingData = data; // Initialize filtered data
-            costingDataTable = $('#costing-table').DataTable({
-                "scrollY": "75vh",
-                "scrollX": true,
-                "scrollCollapse": true,
-                "paging": false,
-                "ordering": true,
-                "info": false,
-                "fixedHeader": {
-                    "header": true,
-                    "headerOffset": 50
-                }
-            });
-            populateTable();
-            updateMLInsights();
-            attachEventListeners();
-            showLoading(false);
-        })
-        .withFailureHandler(error => {
-            console.error('Error importing data:', error);
-            showNotification('Failed to load data from Google Sheet.', 'error');
-            showLoading(false);
-        })
-        .importCostingData();
+    const sfgPromise = new Promise((resolve, reject) => {
+        google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).importSfgData();
+    });
+    const fgPromise = new Promise((resolve, reject) => {
+        google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).importFgData();
+    });
+
+    Promise.all([sfgPromise, fgPromise]).then(([sfgData, fgData]) => {
+        sfgCostingData = sfgData || [];
+        sfgFilteredCostingData = sfgData || [];
+        sfgLastRefresh = new Date();
+        fgCostingData = fgData || [];
+        fgFilteredCostingData = fgData || [];
+        fgLastRefresh = new Date();
+
+        const dataTableConfig = {
+            "scrollY": "75vh", "scrollX": true, "scrollCollapse": true, "paging": false,
+            "ordering": true, "info": false, "fixedHeader": { "header": true, "headerOffset": 50 }
+        };
+        sfgDataTable = $('#costing-table-sfg').DataTable(dataTableConfig);
+        fgDataTable = $('#costing-table-fg').DataTable(dataTableConfig);
+        
+        attachEventListeners();
+        switchTab('sfg');
+        showLoading(false);
+    }).catch(error => {
+        console.error('Error importing data:', error);
+        showNotification('Failed to load data from one or more Google Sheets.', 'error');
+        showLoading(false);
+    });
 }
 
-// Populate table with data
+// =================================================================================
+// Tab & UI Logic
+// =================================================================================
+function switchTab(system) {
+    activeSystem = system;
+    
+    // Deactivate all tabs and content first
+    $('.tab-button').removeClass('active');
+    $('.system-container').removeClass('active');
+
+    // Activate the selected tab and content
+    $(`#${system}-tab`).addClass('active');
+    $(`#${system}-content`).addClass('active');
+
+    populateTable();
+    updateMLInsights();
+    updateRefreshTimestamp();
+}
+
+function updateRefreshTimestamp() {
+    const { lastRefresh, timestampElementId } = getActiveSystemContext();
+    if (lastRefresh) {
+        const timeString = lastRefresh.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        $(timestampElementId).text(`Last loaded: ${timeString}`);
+    } else {
+        $(timestampElementId).text('');
+    }
+}
+
+function getActiveSystemContext() {
+    if (activeSystem === 'sfg') {
+        return {
+            costingData: sfgCostingData, filteredData: sfgFilteredCostingData, dataTable: sfgDataTable,
+            lastRefresh: sfgLastRefresh, saveFunc: 'saveSfgData', importFunc: 'importSfgData',
+            deviationFilterIds: { ca: '#ca-deviation-filter-sfg', toc: '#toc-deviation-filter-sfg', time: '#time-deviation-filter-sfg' },
+            timestampElementId: '#sfg-refresh-time'
+        };
+    } else {
+        return {
+            costingData: fgCostingData, filteredData: fgFilteredCostingData, dataTable: fgDataTable,
+            lastRefresh: fgLastRefresh, saveFunc: 'saveFgData', importFunc: 'importFgData',
+            deviationFilterIds: { ca: '#ca-deviation-filter-fg', toc: '#toc-deviation-filter-fg', time: '#time-deviation-filter-fg' },
+            timestampElementId: '#fg-refresh-time'
+        };
+    }
+}
+
+// =================================================================================
+// Data Population and Display
+// =================================================================================
 function populateTable() {
-    costingDataTable.clear();
-    const rows = filteredCostingData.map((item, index) => {
+    const { filteredData, costingData, dataTable } = getActiveSystemContext();
+    if (!dataTable) return;
+
+    dataTable.clear();
+    const rows = filteredData.map((item, index) => {
         const originalIndex = costingData.findIndex(d => d.productionId === item.productionId);
-
-        const caDeviation = calculateDeviation(item.ca.benchmark, item.ca.newBenchmark);
-        const tocDeviation = calculateDeviation(item.toc.benchmark, item.toc.newBenchmark);
-        const timeDeviation = calculateTimeDeviation(item.time.benchmark, item.time.newBenchmark);
-
         return [
-            `<strong>${item.productName}</strong>`,
-            item.productionId,
-            item.package,
-            item.qty.toLocaleString(),
-            `<div class="notes-col">${item.notes}</div>`,
-            `<div class="ai-notes-col">${item.aiNotes || ''}</div>`,
-            `<div class="cost-cell editable-cell" onclick="makeCellEditable(this, ${originalIndex}, 'ca.correct')">₹${item.ca.correct.toFixed(2)}</div>`,
-            `<div class="cost-cell">₹${item.ca.benchmark.toFixed(2)}</div>`,
-            `<div class="cost-cell">₹${item.ca.last3Prod.toFixed(2)}</div>`,
-            `<div class="cost-cell">₹${item.ca.last3Month.toFixed(2)}</div>`,
-            `<div class="cost-cell">₹${item.ca.last12Month.toFixed(2)}</div>`,
-            `<div class="cost-cell editable-cell" onclick="makeCellEditable(this, ${originalIndex}, 'ca.newBenchmark')">₹${item.ca.newBenchmark.toFixed(2)}</div>`,
-            `<div class="deviation-cell">${caDeviation}</div>`,
-            `<div class="status-cell ${getStatusClass(item.ca.status)}" onclick="editStatus(${originalIndex}, 'ca')">${formatStatus(item.ca.status)}</div>`,
-            `<div class="cost-cell editable-cell" onclick="makeCellEditable(this, ${originalIndex}, 'toc.correct')">₹${item.toc.correct.toFixed(2)}</div>`,
-            `<div class="cost-cell">₹${item.toc.benchmark.toFixed(2)}</div>`,
-            `<div class="cost-cell">₹${item.toc.last3Prod.toFixed(2)}</div>`,
-            `<div class="cost-cell">₹${item.toc.last3Month.toFixed(2)}</div>`,
-            `<div class="cost-cell">₹${item.toc.last12Month.toFixed(2)}</div>`,
-            `<div class="cost-cell editable-cell" onclick="makeCellEditable(this, ${originalIndex}, 'toc.newBenchmark')">₹${item.toc.newBenchmark.toFixed(2)}</div>`,
-            `<div class="deviation-cell">${tocDeviation}</div>`,
-            `<div class="status-cell ${getStatusClass(item.toc.status)}" onclick="editStatus(${originalIndex}, 'toc')">${formatStatus(item.toc.status)}</div>`,
-            `<div class="time-cell editable-cell" onclick="makeCellEditable(this, ${originalIndex}, 'time.correct')">${item.time.correct}</div>`,
-            `<div class="time-cell">${item.time.benchmark}</div>`,
-            `<div class="time-cell">${item.time.last3Prod}</div>`,
-            `<div class="time-cell">${item.time.last3Month}</div>`,
-            `<div class="time-cell">${item.time.last12Month}</div>`,
-            `<div class="time-cell editable-cell" onclick="makeCellEditable(this, ${originalIndex}, 'time.newBenchmark')">${item.time.newBenchmark}</div>`,
-            `<div class="deviation-cell">${timeDeviation}</div>`,
-            `<div class="status-cell ${getStatusClass(item.time.status)}" onclick="editStatus(${originalIndex}, 'time')">${formatStatus(item.time.status)}</div>`,
+            `<strong>${item.productName}</strong>`, item.productionId, item.package, item.qty.toLocaleString(),
+            `<div class="notes-col">${item.notes}</div>`, `<div class="ai-notes-col">${item.aiNotes || ''}</div>`,
+            ...createCostSectionRow(item, 'ca', originalIndex),
+            ...createCostSectionRow(item, 'toc', originalIndex),
+            ...createCostSectionRow(item, 'time', originalIndex)
         ];
     });
-    costingDataTable.rows.add(rows).draw(false);
+    dataTable.rows.add(rows).draw(false);
 }
 
-// Helper functions
-function timeToSeconds(timeStr) {
-    if (!timeStr || typeof timeStr !== 'string') return 0;
-    const parts = timeStr.split(':').map(Number);
-    if (parts.length !== 3) return 0;
-    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+function createCostSectionRow(item, section, originalIndex) {
+    const isTime = section === 'time';
+    const deviation = isTime ? calculateTimeDeviation(item[section].benchmark, item[section].newBenchmark) : calculateDeviation(item[section].benchmark, item[section].newBenchmark);
+    const format = (val) => isTime ? val : `₹${val.toFixed(2)}`;
+
+    return [
+        `<div class="cost-cell editable-cell" onclick="openEditModal(${originalIndex}, '${section}.correct')">${format(item[section].correct)}</div>`,
+        `<div class="cost-cell">${format(item[section].benchmark)}</div>`,
+        `<div class="cost-cell">${format(item[section].last3Prod)}</div>`,
+        `<div class="cost-cell">${format(item[section].last3Month)}</div>`,
+        `<div class="cost-cell">${format(item[section].last12Month)}</div>`,
+        `<div class="cost-cell editable-cell" onclick="openEditModal(${originalIndex}, '${section}.newBenchmark')">${format(item[section].newBenchmark)}</div>`,
+        `<div class="deviation-cell">${deviation}</div>`,
+        `<div class="status-cell ${getStatusClass(item[section].status)}" onclick="editStatus(${originalIndex}, '${section}')">${formatStatus(item[section].status)}</div>`
+    ];
 }
 
-function calculateDeviation(benchmark, newBenchmark) {
-    if (benchmark === 0) return 'N/A';
-    const deviation = ((newBenchmark - benchmark) / benchmark) * 100;
-    return deviation.toFixed(1) + '%';
-}
-
-function calculateTimeDeviation(benchmarkTime, newBenchmarkTime) {
-    const benchmarkSeconds = timeToSeconds(benchmarkTime);
-    if (benchmarkSeconds === 0) return 'N/A';
-    const newBenchmarkSeconds = timeToSeconds(newBenchmarkTime);
-    const deviation = ((newBenchmarkSeconds - benchmarkSeconds) / benchmarkSeconds) * 100;
-    return deviation.toFixed(1) + '%';
-}
-
-function getStatusClass(status) {
-    switch(status) {
-        case 'update': return 'status-update';
-        case 'no_need': return 'status-no-need';
-        default: return 'status-update';
-    }
-}
-
-function formatStatus(status) {
-    switch(status) {
-        case 'update': return 'Update';
-        case 'no_need': return 'No Need';
-        default: return 'Update';
-    }
-}
-
-// Edit functionality
-function makeCellEditable(cell, rowIndex, fieldPath) {
-    const currentValue = getNestedValue(costingData[rowIndex], fieldPath);
-    $(cell).html(`<input type='text' value='${currentValue}'/>`).find('input').focus()
-        .on('blur', function() {
-            saveCell(this, rowIndex, fieldPath);
-        })
-        .on('keypress', function(e) {
-            if (e.which === 13) {
-                this.blur();
-            }
-        });
-}
-
-function saveCell(input, rowIndex, fieldPath) {
-    const newValue = $(input).val();
-    setNestedValue(costingData[rowIndex], fieldPath, newValue);
-    filterAndPopulate();
-    updateMLInsights();
-    showNotification('Data updated successfully!', 'success');
-}
-
-function editStatus(rowIndex, section) {
-    const newStatus = costingData[rowIndex][section].status === 'update' ? 'no_need' : 'update';
-    
-    if (section === 'ca') {
-        costingData[rowIndex].ca.status = newStatus;
-        costingData[rowIndex].toc.status = newStatus;
-        costingData[rowIndex].time.status = newStatus;
-    } else {
-        costingData[rowIndex][section].status = newStatus;
-    }
-    
-    filterAndPopulate();
-    updateMLInsights();
-    showNotification(`Status updated to: ${formatStatus(newStatus)}`, 'success');
-}
-
-function getNestedValue(obj, path) {
-    return path.split('.').reduce((o, p) => o && o[p], obj);
-}
-
-function setNestedValue(obj, path, value) {
-    const keys = path.split('.');
-    const last = keys.pop();
-    const target = keys.reduce((o, k) => o[k], obj);
-    target[last] = isNaN(value) || value === '' ? value : parseFloat(value);
-}
-
-// AI-Powered Analysis and Recommendations
-function updateMLInsights() {
-    const totalItems = costingData.length;
-    let deviationCount = 0;
-    let totalOptimization = 0;
-    
-    costingData.forEach(item => {
-        if (item.ca.benchmark > 0) {
-            const caDeviation = ((item.ca.newBenchmark - item.ca.benchmark) / item.ca.benchmark) * 100;
-            if (Math.abs(caDeviation) > 5) deviationCount++;
-            if (item.ca.newBenchmark < item.ca.benchmark) {
-                totalOptimization += item.ca.benchmark - item.ca.newBenchmark;
-            }
-        }
-        if (item.toc.benchmark > 0) {
-            const tocDeviation = ((item.toc.newBenchmark - item.toc.benchmark) / item.toc.benchmark) * 100;
-            if (Math.abs(tocDeviation) > 5) deviationCount++;
-            if (item.toc.newBenchmark < item.toc.benchmark) {
-                totalOptimization += item.toc.benchmark - item.toc.newBenchmark;
-            }
-        }
-    });
-    
-    const optimizationPercentage = totalItems > 0 ? ((totalOptimization / (totalItems * 80)) * 100).toFixed(1) : 0;
-    
-    document.getElementById('optimization-potential').textContent = optimizationPercentage + '%';
-    document.getElementById('updates-needed').textContent = deviationCount.toString();
-    document.getElementById('efficiency-score').textContent = '87%';
-    document.getElementById('variance-alert').textContent = deviationCount > 3 ? 'High' : deviationCount > 1 ? 'Medium' : 'Low';
-}
-
-async function runAIAnalysis() {
-    showNotification('🤖 Running AI analysis with OpenAI...', 'info');
+// =================================================================================
+// Core Logic & Actions (AI, Bulk Updates)
+// =================================================================================
+function runAIAnalysis() {
+    showNotification('🤖 Running AI analysis...', 'info');
     showLoading(true);
-    
-    const deviations = analyzeDeviations();
+    const { costingData } = getActiveSystemContext();
+    const deviations = analyzeDeviationsForAI(costingData);
+    console.log(deviations)
     if (deviations.length === 0) {
         showLoading(false);
-        showNotification('No significant deviations found requiring AI analysis.', 'success');
+        showNotification('No significant deviations found.', 'success');
         return;
     }
-    
-    google.script.run
-        .withSuccessHandler(handleAIAnalysisSuccess)
-        .withFailureHandler(handleAIAnalysisFailure)
-        .runOpenAIAnalysis(deviations);
+    google.script.run.withSuccessHandler(handleAIAnalysisSuccess).withFailureHandler(handleAIAnalysisFailure).runOpenAIAnalysis(deviations);
 }
 
 function handleAIAnalysisSuccess(aiRecommendations) {
     showLoading(false);
-
+    const { costingData } = getActiveSystemContext();
     aiRecommendations.forEach(rec => {
         const item = costingData[rec.index];
-        if (!item) return; // Skip if item not found
-
-        // Update status based on recommendation type
-        const section = rec.type === 'CA Cost' ? 'ca' : 'toc';
+        if (!item) return;
+        const section = rec.type.split(' ')[0].toLowerCase();
         item[section].status = rec.status;
-        
-        // Add or update AI notes, appending if multiple recommendations exist for one item
-        if (item.aiNotes) {
-            item.aiNotes += `\n${rec.type}: ${rec.decisionNotes}`;
-        } else {
-            item.aiNotes = `${rec.type}: ${rec.decisionNotes}`;
-        }
+        item.aiNotes = (item.aiNotes ? item.aiNotes + '\n' : '') + `${rec.type}: ${rec.decisionNotes}`;
     });
-
-    filterAndPopulate(); // This will re-draw the table with the new data
-    showNotification('AI analysis complete. Table has been updated with recommendations.', 'success');
+    filterAndPopulate();
+    showNotification('AI analysis complete. Table updated.', 'success');
 }
 
 function handleAIAnalysisFailure(error) {
     showLoading(false);
     console.error('AI Analysis Error:', error);
-    showNotification('An error occurred while communicating with the AI service. Please try again.', 'error');
+    showNotification('AI Analysis Failed: ' + error.message, 'error');
 }
 
-function analyzeDeviations() {
+function analyzeDeviationsForAI(data) {
     const deviations = [];
-    const formatValue = (value) => value === 0 ? 'No data' : value;
-
-    costingData.forEach((item, index) => {
-        if (item.ca.benchmark > 0) {
-            const caDeviation = ((item.ca.newBenchmark - item.ca.benchmark) / item.ca.benchmark) * 100;
-            if (caDeviation > 5) {
-                const devData = {
-                    index,
-                    product: item.productName,
-                    productionId: item.productionId,
-                    type: 'CA Cost',
-                    currentBenchmark: formatValue(item.ca.benchmark),
-                    proposedBenchmark: formatValue(item.ca.newBenchmark),
-                    deviation: caDeviation,
-                    last3Avg: formatValue(item.ca.last3Prod),
-                    last3MonthAvg: formatValue(item.ca.last3Month),
-                    last12MonthAvg: formatValue(item.ca.last12Month)
-                };
-                if (item.notes) devData.notes = item.notes;
-                deviations.push(devData);
+    data.forEach((item, index) => {
+        ['ca', 'toc', 'time'].forEach(type => {
+            if (item[type].benchmark > 0) {
+                const deviation = type === 'time' ? calculateTimeDeviation(item[type].benchmark, item[type].newBenchmark) : calculateDeviation(item[type].benchmark, item[type].newBenchmark);
+                if (Math.abs(parseFloat(deviation)) > 5) {
+                    deviations.push({ index, product: item.productName, productionId: item.productionId, type: type.toUpperCase() + (type !== 'time' ? ' Cost' : ''), ...item[type] });
+                }
             }
-        }
-        if (item.toc.benchmark > 0) {
-            const tocDeviation = ((item.toc.newBenchmark - item.toc.benchmark) / item.toc.benchmark) * 100;
-            if (tocDeviation > 5) {
-                const devData = {
-                    index,
-                    product: item.productName,
-                    productionId: item.productionId,
-                    type: 'TOC Cost',
-                    currentBenchmark: formatValue(item.toc.benchmark),
-                    proposedBenchmark: formatValue(item.toc.newBenchmark),
-                    deviation: tocDeviation,
-                    last3Avg: formatValue(item.toc.last3Prod),
-                    last3MonthAvg: formatValue(item.toc.last3Month),
-                    last12MonthAvg: formatValue(item.toc.last12Month)
-                };
-                if (item.notes) devData.notes = item.notes;
-                deviations.push(devData);
-            }
-        }
+        });
     });
     return deviations;
 }
 
-
 function generateSmartRecommendations() {
-    const deviations = analyzeDeviations();
+    const { costingData } = getActiveSystemContext();
+    const deviations = analyzeDeviationsForAI(costingData);
     if (deviations.length === 0) {
-        showNotification('No significant cost deviations found. All benchmarks are optimal!', 'success');
+        showNotification('No significant deviations found.', 'success');
         return;
     }
     let recommendations = "🎯 Smart Cost Recommendations:\n\n";
     deviations.forEach((dev, index) => {
-        const action = dev.deviation > 15 ? "URGENT REVIEW" : dev.deviation > 10 ? "REVIEW REQUIRED" : dev.deviation > 5 ? "MONITOR" : "OPTIMIZE";
-        recommendations += `${index + 1}. ${dev.product} (${dev.type})\n   Current: ₹${dev.currentBenchmark.toFixed(2)} → Proposed: ₹${dev.proposedBenchmark.toFixed(2)}\n   Deviation: ${dev.deviation.toFixed(1)}% | Action: ${action}\n\n`;
+        const action = dev.deviation > 15 ? "URGENT" : "REVIEW";
+        recommendations += `${index + 1}. ${dev.product} (${dev.type}): ${dev.deviation.toFixed(1)}% | Action: ${action}\n`;
     });
     alert(recommendations);
 }
 
-// Google Sheets Integration
-function importFromGoogleSheets() {
-    showNotification('Loading data from Google Sheets...', 'info');
-    google.script.run
-        .withSuccessHandler(handleImportSuccess)
-        .withFailureHandler(handleImportFailure)
-        .importCostingData();
-}
-
-function handleImportSuccess(data) {
-    if (data && data.length > 0) {
-        costingData = data;
-        filteredCostingData = data;
-        filterAndPopulate();
-        updateMLInsights();
-        showNotification('Data imported successfully from Google Sheets!', 'success');
-    } else {
-        showNotification('No data found in Google Sheets.', 'error');
-    }
-}
-
-function handleImportFailure(error) {
-    console.error('Import Error:', error);
-    showNotification('Failed to import data from Google Sheets.', 'error');
-}
-
-function saveToGoogleSheets() {
-    showNotification('Saving data to Google Sheets...', 'info');
-    google.script.run
-        .withSuccessHandler(handleSaveSuccess)
-        .withFailureHandler(handleSaveFailure)
-        .saveCostingData(costingData);
-}
-
-function handleSaveSuccess() {
-    showNotification('Data saved successfully to Google Sheets!', 'success');
-}
-
-function handleSaveFailure(error) {
-    console.error('Save Error:', error);
-    showNotification('Failed to save data to Google Sheets.', 'error');
-}
-
-// Filter and search functionality (Simplified)
-function filterAndPopulate() {
-    const caDevFilter = parseFloat(document.getElementById('ca-deviation-filter').value);
-    const tocDevFilter = parseFloat(document.getElementById('toc-deviation-filter').value);
-    const timeDevFilter = parseFloat(document.getElementById('time-deviation-filter').value);
-
-    filteredCostingData = costingData.filter(item => {
-        const caDev = Math.abs(parseFloat(calculateDeviation(item.ca.benchmark, item.ca.newBenchmark))) || 0;
-        const tocDev = Math.abs(parseFloat(calculateDeviation(item.toc.benchmark, item.toc.newBenchmark))) || 0;
-        const timeDev = Math.abs(parseFloat(calculateTimeDeviation(item.time.benchmark, item.time.newBenchmark))) || 0;
-
-        return caDev >= caDevFilter && tocDev >= tocDevFilter && timeDev >= timeDevFilter;
-    });
-    
-    populateTable();
-}
-
 function bulkUpdateBenchmarks() {
-    const confirmed = confirm('Are you sure you want to bulk update all benchmark costs?');
-    if (confirmed) {
-        costingData.forEach(item => {
-            item.ca.benchmark = item.ca.newBenchmark;
-            item.toc.benchmark = item.toc.newBenchmark;
-            item.ca.status = 'approved';
-            item.toc.status = 'approved';
+    if (!confirm('Are you sure you want to bulk update all benchmarks for the visible rows?')) return;
+    const { filteredData } = getActiveSystemContext();
+    filteredData.forEach(item => {
+        ['ca', 'toc', 'time'].forEach(sec => {
+            item[sec].benchmark = item[sec].newBenchmark;
+            item[sec].status = 'approved';
         });
-        filterAndPopulate();
-        updateMLInsights();
-        showNotification('Bulk benchmark update completed!', 'success');
-    }
+    });
+    filterAndPopulate();
+    updateMLInsights();
+    showNotification('Bulk benchmark update completed!', 'success');
 }
 
 function bulkUpdateStatus(section) {
-    const status = document.getElementById(`${section}-bulk-status`).value;
-    costingData.forEach(item => {
-        item[section].status = status;
-    });
+    const status = $(`#${section}-bulk-status-${activeSystem}`).val();
+    const { filteredData } = getActiveSystemContext();
+    filteredData.forEach(item => item[section].status = status);
     filterAndPopulate();
-    showNotification(`${section.toUpperCase()} statuses updated to: ${formatStatus(status)}`, 'success');
+    showNotification(`${section.toUpperCase()} statuses for visible rows updated!`, 'success');
 }
 
-// Utility functions
-function showNotification(message, type = 'info') {
-    const notification = document.createElement('div');
-    notification.className = `notification ${type}`;
-    notification.textContent = message;
-    document.body.appendChild(notification);
-    
-    setTimeout(() => notification.classList.add('show'), 100);
-    
-    setTimeout(() => {
-        notification.classList.remove('show');
-        setTimeout(() => document.body.removeChild(notification), 300);
-    }, 3000);
+// =================================================================================
+// Data Persistence (Load/Save)
+// =================================================================================
+function refreshData() {
+    const { importFunc } = getActiveSystemContext();
+    showNotification(`Loading data for ${activeSystem.toUpperCase()}...`, 'info');
+    showLoading(true);
+    google.script.run.withSuccessHandler(data => {
+        if (activeSystem === 'sfg') { sfgCostingData = data; sfgFilteredCostingData = data; sfgLastRefresh = new Date(); } 
+        else { fgCostingData = data; fgFilteredCostingData = data; fgLastRefresh = new Date(); }
+        filterAndPopulate(); updateMLInsights(); updateRefreshTimestamp();
+        showLoading(false); showNotification('Data imported successfully!', 'success');
+    }).withFailureHandler(error => {
+        showLoading(false); showNotification('Import failed.', 'error');
+    })[importFunc]();
 }
 
-function showLoading(show) {
-    const loader = document.getElementById('loading-indicator');
-    loader.style.display = show ? 'block' : 'none';
+function saveData() {
+    const { costingData, saveFunc } = getActiveSystemContext();
+    showNotification(`Saving data for ${activeSystem.toUpperCase()}...`, 'info');
+    showLoading(true);
+    google.script.run.withSuccessHandler(response => {
+        showLoading(false); showNotification(response.message, 'success');
+    }).withFailureHandler(error => {
+        showLoading(false); showNotification('Save failed.', 'error');
+    })[saveFunc](costingData);
 }
 
+// =================================================================================
+// Inline Editing & Modal Logic
+// =================================================================================
+function openEditModal(rowIndex, fieldPath) {
+    const { costingData } = getActiveSystemContext();
+    currentEditContext = { rowIndex, fieldPath };
+    const currentValue = getNestedValue(costingData[rowIndex], fieldPath);
+    $('#edit-field').val(fieldPath);
+    $('#edit-current-value').val(currentValue);
+    $('#edit-new-value').val('').focus();
+    $('#edit-modal').show();
+}
+
+function closeModal() {
+    $('#edit-modal').hide();
+    currentEditContext = null;
+}
+
+function saveEdit() {
+    if (!currentEditContext) return;
+    const { costingData } = getActiveSystemContext();
+    const { rowIndex, fieldPath } = currentEditContext;
+    const newValue = $('#edit-new-value').val();
+    setNestedValue(costingData[rowIndex], fieldPath, newValue);
+    filterAndPopulate();
+    updateMLInsights();
+    closeModal();
+    showNotification('Data updated successfully!', 'success');
+}
+
+function editStatus(rowIndex, section) {
+    const { costingData } = getActiveSystemContext();
+    const item = costingData[rowIndex];
+    const newStatus = item[section].status === 'update' ? 'no_need' : 'update';
+    if (section === 'ca') {
+        ['ca', 'toc', 'time'].forEach(sec => item[sec].status = newStatus);
+    } else {
+        item[section].status = newStatus;
+    }
+    filterAndPopulate();
+    updateMLInsights();
+    showNotification(`Status updated to: ${formatStatus(newStatus)}`, 'success');
+}
+
+// =================================================================================
+// Event Listeners
+// =================================================================================
 function attachEventListeners() {
-    // Modal listeners
-    document.addEventListener('click', (event) => { if (event.target === document.getElementById('edit-modal')) closeModal(); });
-    document.getElementById('edit-new-value').addEventListener('keypress', (event) => { if (event.key === 'Enter') saveEdit(); });
+    // Tabs
+    $('#sfg-tab').on('click', () => switchTab('sfg'));
+    $('#fg-tab').on('click', () => switchTab('fg'));
 
-    // Deviation filters
-    ['ca', 'toc', 'time'].forEach(section => {
-        const filter = document.getElementById(`${section}-deviation-filter`);
-        const valueDisplay = document.getElementById(`${section}-deviation-value`);
-        filter.addEventListener('input', () => {
-            valueDisplay.textContent = `${filter.value}%`;
-            filterAndPopulate();
-        });
-    });
+    // Main Controls
+    $('#sfg-run-ai-btn, #fg-run-ai-btn').on('click', runAIAnalysis);
+    $('#sfg-smart-rec-btn, #fg-smart-rec-btn').on('click', generateSmartRecommendations);
+    $('#sfg-bulk-update-btn, #fg-bulk-update-btn').on('click', bulkUpdateBenchmarks);
+    $('#sfg-save-btn, #fg-save-btn').on('click', saveData);
+    $('#sfg-refresh-btn, #fg-refresh-btn').on('click', refreshData);
+
+    // Bulk Status
+    ['sfg', 'fg'].forEach(sys => ['ca', 'toc', 'time'].forEach(sec => {
+        $(`#${sys}-bulk-status-${sec}-btn`).on('click', () => bulkUpdateStatus(sec));
+    }));
+
+    // Deviation Filters
+    ['sfg', 'fg'].forEach(sys => ['ca', 'toc', 'time'].forEach(sec => {
+        const rangeSlider = $(`#${sec}-deviation-filter-${sys}`);
+        const numberInput = $(`#${sec}-deviation-input-${sys}`);
+        rangeSlider.on('input', () => { numberInput.val(rangeSlider.val()); if (activeSystem === sys) filterAndPopulate(); });
+        numberInput.on('input', () => { rangeSlider.val(numberInput.val()); if (activeSystem === sys) filterAndPopulate(); });
+    }));
+
+    // Modal
+    $('#modal-cancel-btn').on('click', closeModal);
+    $('#modal-save-btn').on('click', saveEdit);
+    $('#edit-new-value').on('keypress', e => { if (e.key === 'Enter') saveEdit(); });
 }
 
-// Initialize when page loads
-document.addEventListener('DOMContentLoaded', initializeDashboard);
+// =================================================================================
+// Helpers & Utilities
+// =================================================================================
+function getNestedValue(obj, path) { return path.split('.').reduce((o, p) => o && o[p], obj); }
+function setNestedValue(obj, path, value) {
+    const keys = path.split('.'); const last = keys.pop();
+    const target = keys.reduce((o, k) => o[k], obj);
+    target[last] = isNaN(value) || value === '' ? value : parseFloat(value);
+}
+function calculateDeviation(b, n) { return b === 0 ? 'N/A' : (((n - b) / b) * 100).toFixed(1) + '%'; }
+function calculateTimeDeviation(b, n) {
+    const bSec = timeToSeconds(b); const nSec = timeToSeconds(n);
+    return bSec === 0 ? 'N/A' : (((nSec - bSec) / bSec) * 100).toFixed(1) + '%';
+}
+function timeToSeconds(t) { if (!t) return 0; const p = t.split(':'); return p.length !== 3 ? 0 : +p[0] * 3600 + +p[1] * 60 + +p[2]; }
+function getStatusClass(s) { if (s === 'update') return 'status-update'; if (s === 'no_need') return 'status-no-need'; return 'status-action-required'; }
+function formatStatus(s) { if (s === 'update') return 'Update'; if (s === 'no_need') return 'No Need'; return 'Action Required'; }
+function showNotification(message, type = 'info') {
+    const notification = $('<div></div>').addClass(`notification ${type}`).text(message);
+    $('body').append(notification);
+    setTimeout(() => notification.addClass('show'), 100);
+    setTimeout(() => { notification.removeClass('show'); setTimeout(() => notification.remove(), 300); }, 3000);
+}
+function showLoading(show) { $('#loading-indicator').css('display', show ? 'block' : 'none'); }
+function filterAndPopulate() {
+    const { costingData, deviationFilterIds } = getActiveSystemContext();
+    if (!costingData) return;
+    const caDevFilter = parseFloat($(deviationFilterIds.ca).val());
+    const tocDevFilter = parseFloat($(deviationFilterIds.toc).val());
+    const timeDevFilter = parseFloat($(deviationFilterIds.time).val());
+    const newFilteredData = costingData.filter(item => {
+        const caDev = parseFloat(calculateDeviation(item.ca.benchmark, item.ca.newBenchmark)) || 0;
+        const tocDev = parseFloat(calculateDeviation(item.toc.benchmark, item.toc.newBenchmark)) || 0;
+        const timeDev = parseFloat(calculateTimeDeviation(item.time.benchmark, item.time.newBenchmark)) || 0;
+        return caDev >= caDevFilter && tocDev >= tocDevFilter && timeDev >= timeDevFilter;
+    });
+    if (activeSystem === 'sfg') { sfgFilteredCostingData = newFilteredData; } else { fgFilteredCostingData = newFilteredData; }
+    populateTable();
+}
+function updateMLInsights() {
+    const { costingData } = getActiveSystemContext();
+    if (!costingData) return;
+    const totalItems = costingData.length;
+    let deviationCount = 0, totalOptimization = 0;
+    costingData.forEach(item => {
+        if (item.ca.benchmark > 0) {
+            const caDeviation = ((item.ca.newBenchmark - item.ca.benchmark) / item.ca.benchmark) * 100;
+            if (Math.abs(caDeviation) > 5) deviationCount++;
+            if (item.ca.newBenchmark < item.ca.benchmark) totalOptimization += item.ca.benchmark - item.ca.newBenchmark;
+        }
+        if (item.toc.benchmark > 0) {
+            const tocDeviation = ((item.toc.newBenchmark - item.toc.benchmark) / item.toc.benchmark) * 100;
+            if (Math.abs(tocDeviation) > 5) deviationCount++;
+            if (item.toc.newBenchmark < item.toc.benchmark) totalOptimization += item.toc.benchmark - item.toc.newBenchmark;
+        }
+    });
+    const optimizationPercentage = totalItems > 0 ? ((totalOptimization / (totalItems * 80)) * 100).toFixed(1) : 0;
+    $('#optimization-potential').text(optimizationPercentage + '%');
+    $('#updates-needed').text(deviationCount);
+    $('#efficiency-score').text('87%');
+    $('#variance-alert').text(deviationCount > 3 ? 'High' : deviationCount > 1 ? 'Medium' : 'Low');
+}
 </script>
