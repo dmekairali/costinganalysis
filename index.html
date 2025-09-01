@@ -17,131 +17,176 @@
             <p>Intelligent cost analysis with AI-powered insights and real-time decision support</p>
         </div>
 
-        <!-- ML Insights Panel -->
+        <!-- Tab Navigation -->
+        <div class="tabs-container">
+            <button class="tab-button active" id="sfg-tab">SFG Costing Review</button>
+            <button class="tab-button" id="fg-tab">FG Costing System</button>
+        </div>
+
+        <!-- ML Insights Panel (Shared) -->
         <div class="ml-insights">
             <h3>🤖 AI-Powered Insights & Recommendations</h3>
             <div class="insight-cards">
                 <div class="insight-card">
                     <h4>Cost Optimization Potential</h4>
-                    <div class="value" id="optimization-potential">12.3%</div>
+                    <div class="value" id="optimization-potential">...</div>
                 </div>
                 <div class="insight-card">
                     <h4>Benchmark Updates Needed</h4>
-                    <div class="value" id="updates-needed">5</div>
+                    <div class="value" id="updates-needed">...</div>
                 </div>
                 <div class="insight-card">
                     <h4>Time Efficiency Score</h4>
-                    <div class="value" id="efficiency-score">87%</div>
+                    <div class="value" id="efficiency-score">...</div>
                 </div>
                 <div class="insight-card">
                     <h4>Cost Variance Alert</h4>
-                    <div class="value" id="variance-alert">Medium</div>
+                    <div class="value" id="variance-alert">...</div>
                 </div>
             </div>
         </div>
 
-        <!-- Controls Panel -->
-        <div class="controls-panel">
-            
-            <div class="controls-row">
-                <button class="btn btn-primary" onclick="runAIAnalysis()">🤖 Run AI Cost Analysis</button>
-                <button class="btn btn-primary" onclick="generateSmartRecommendations()">💡 Smart Recommendations</button>
-                <button class="btn btn-primary" onclick="bulkUpdateBenchmarks()">🔄 Bulk Update Benchmarks</button>
-                <button class="btn btn-secondary" onclick="importFromGoogleSheets()">📥 Load from Sheets</button>
-                <button class="btn btn-secondary" onclick="saveToGoogleSheets()">💾 Save to Sheets</button>
+        <!-- SFG System Container -->
+        <div id="sfg-content" class="system-container active">
+            <!-- Controls Panel -->
+            <div class="controls-panel">
+                <div class="controls-row">
+                    <button class="btn btn-primary" id="sfg-run-ai-btn">🤖 Run AI Cost Analysis</button>
+                    <button class="btn btn-primary" id="sfg-smart-rec-btn">💡 Smart Recommendations</button>
+                    <button class="btn btn-primary" id="sfg-bulk-update-btn">🔄 Bulk Update Benchmarks</button>
+                    <button class="btn btn-secondary" id="sfg-save-btn">💾 Save to Sheets</button>
+                    <button class="btn btn-secondary" id="sfg-refresh-btn">🔄 Refresh Data</button>
+                    <span class="refresh-timestamp" id="sfg-refresh-time"></span>
+                </div>
+            </div>
+            <!-- Data Table -->
+            <div class="data-table-container">
+                <div class="table-wrapper">
+                    <table class="data-table" id="costing-table-sfg">
+                        <thead>
+                            <tr>
+                                <th rowspan="3">Product Name</th><th rowspan="3">Production ID</th><th rowspan="3">Package</th><th rowspan="3">Qty</th><th rowspan="3" class="notes-col">Notes</th><th rowspan="3" class="ai-notes-col">AI Notes</th>
+                                <th colspan="8" class="section-divider">CA Cost Analysis (₹/Unit)</th><th colspan="8" class="section-divider">TOC Cost Analysis (₹/Unit)</th><th colspan="8" class="section-divider">Time Analysis</th>
+                            </tr>
+                            <tr>
+                                <td colspan="8" class="section-controls">
+                                    <div style="display: flex; justify-content: space-around; align-items: center; font-size: 11px;">
+                                        <span>Bulk Status:
+                                            <select id="ca-bulk-status-sfg" style="font-size: 11px; padding: 1px;"><option value="update">Update</option><option value="no_need">No Need</option></select>
+                                            <button id="sfg-bulk-status-ca-btn" style="font-size: 11px; padding: 1px 3px;">Apply</button>
+                                        </span>
+                                        <span style="display: inline-flex; align-items: center; gap: 5px;">Filter Dev %:
+                                            <input type="range" id="ca-deviation-filter-sfg" min="0" max="100" value="0" style="width: 80px; vertical-align: middle;">
+                                            <input type="number" id="ca-deviation-input-sfg" min="0" max="100" value="0" style="width: 50px;">
+                                        </span>
+                                    </div>
+                                </td>
+                                <td colspan="8" class="section-controls">
+                                    <div style="display: flex; justify-content: space-around; align-items: center; font-size: 11px;">
+                                        <span>Bulk Status:
+                                            <select id="toc-bulk-status-sfg" style="font-size: 11px; padding: 1px;"><option value="update">Update</option><option value="no_need">No Need</option></select>
+                                            <button id="sfg-bulk-status-toc-btn" style="font-size: 11px; padding: 1px 3px;">Apply</button>
+                                        </span>
+                                        <span style="display: inline-flex; align-items: center; gap: 5px;">Filter Dev %:
+                                            <input type="range" id="toc-deviation-filter-sfg" min="0" max="100" value="0" style="width: 80px; vertical-align: middle;">
+                                            <input type="number" id="toc-deviation-input-sfg" min="0" max="100" value="0" style="width: 50px;">
+                                        </span>
+                                    </div>
+                                </td>
+                                <td colspan="8" class="section-controls">
+                                    <div style="display: flex; justify-content: space-around; align-items: center; font-size: 11px;">
+                                        <span>Bulk Status:
+                                            <select id="time-bulk-status-sfg" style="font-size: 11px; padding: 1px;"><option value="update">Update</option><option value="no_need">No Need</option></select>
+                                            <button id="sfg-bulk-status-time-btn" style="font-size: 11px; padding: 1px 3px;">Apply</button>
+                                        </span>
+                                        <span style="display: inline-flex; align-items: center; gap: 5px;">Filter Dev %:
+                                            <input type="range" id="time-deviation-filter-sfg" min="0" max="100" value="0" style="width: 80px; vertical-align: middle;">
+                                            <input type="number" id="time-deviation-input-sfg" min="0" max="100" value="0" style="width: 50px;">
+                                        </span>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th data-field-path="ca.correct">Correct CA</th><th>Benchmark Cost</th><th>Last 3 Prod Avg</th><th>Last 3 Mo Avg</th><th>Last 12 Mo Avg</th><th data-field-path="ca.newBenchmark">New Benchmark</th><th>% Dev</th><th data-section="ca">Status</th>
+                                <th class="section-divider" data-field-path="toc.correct">Correct TOC</th><th>Benchmark Cost</th><th>Last 3 Prod Avg</th><th>Last 3 Mo Avg</th><th>Last 12 Mo Avg</th><th data-field-path="toc.newBenchmark">New Benchmark</th><th>% Dev</th><th data-section="toc">Status</th>
+                                <th class="section-divider" data-field-path="time.correct">Correct Time</th><th>Benchmark Time</th><th>Last 3 Prod Avg</th><th>Last 3 Mo Avg</th><th>Last 12 Mo Avg</th><th data-field-path="time.newBenchmark">New Benchmark</th><th>% Dev</th><th data-section="time">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body-sfg"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
-        <!-- Data Table -->
-        <div class="data-table-container">
-            <div class="table-wrapper">
-                <table class="data-table" id="costing-table">
-                    <thead>
-                        <tr>
-                            <th rowspan="3">Product Name</th>
-                            <th rowspan="3">Production ID</th>
-                            <th rowspan="3">Package</th>
-                            <th rowspan="3">Qty</th>
-                            <th rowspan="3" class="notes-col">Notes</th>
-                            <th rowspan="3" class="ai-notes-col">AI Notes</th>
-                            <th colspan="8" class="section-divider">CA Cost Analysis (₹/Unit)</th>
-                            <th colspan="8" class="section-divider">TOC Cost Analysis (₹/Unit)</th>
-                            <th colspan="8" class="section-divider">Time Analysis</th>
-                        </tr>
-                        <tr>
-                            <td colspan="8" class="section-controls">
-                                <div style="display: flex; justify-content: space-around; align-items: center; font-size: 11px;">
-                                    <span>Bulk Status:
-                                        <select id="ca-bulk-status" style="font-size: 11px; padding: 1px;">
-                                            <option value="update">Update</option>
-                                            <option value="no_need">No Need</option>
-                                        </select>
-                                        <button onclick="bulkUpdateStatus('ca')" style="font-size: 11px; padding: 1px 3px;">Apply</button>
-                                    </span>
-                                    <span>Filter Dev: <input type="range" id="ca-deviation-filter" min="0" max="100" value="0" style="width: 80px;"> <span id="ca-deviation-value">0%</span></span>
-                                </div>
-                            </td>
-                            <td colspan="8" class="section-controls">
-                                <div style="display: flex; justify-content: space-around; align-items: center; font-size: 11px;">
-                                    <span>Bulk Status:
-                                        <select id="toc-bulk-status" style="font-size: 11px; padding: 1px;">
-                                            <option value="update">Update</option>
-                                            <option value="no_need">No Need</option>
-                                        </select>
-                                        <button onclick="bulkUpdateStatus('toc')" style="font-size: 11px; padding: 1px 3px;">Apply</button>
-                                    </span>
-                                    <span>Filter Dev: <input type="range" id="toc-deviation-filter" min="0" max="100" value="0" style="width: 80px;"> <span id="toc-deviation-value">0%</span></span>
-                                </div>
-                            </td>
-                            <td colspan="8" class="section-controls">
-                                <div style="display: flex; justify-content: space-around; align-items: center; font-size: 11px;">
-                                    <span>Bulk Status:
-                                        <select id="time-bulk-status" style="font-size: 11px; padding: 1px;">
-                                            <option value="update">Update</option>
-                                            <option value="no_need">No Need</option>
-                                        </select>
-                                        <button onclick="bulkUpdateStatus('time')" style="font-size: 11px; padding: 1px 3px;">Apply</button>
-                                    </span>
-                                    <span>Filter Dev: <input type="range" id="time-deviation-filter" min="0" max="100" value="0" style="width: 80px;"> <span id="time-deviation-value">0%</span></span>
-                                </div>
-                            </td>
-                        </tr>
-                        <tr>
-                            <!-- CA Cost columns -->
-                            <th data-field-path="ca.correct">Correct CA</th>
-                            <th>Benchmark Cost</th>
-                            <th>Last 3 Prod Avg</th>
-                            <th>Last 3 Mo Avg</th>
-                            <th>Last 12 Mo Avg</th>
-                            <th data-field-path="ca.newBenchmark">New Benchmark</th>
-                            <th>% Dev</th>
-                            <th data-section="ca">Status</th>
-                            
-                            <!-- TOC Cost columns -->
-                            <th class="section-divider" data-field-path="toc.correct">Correct TOC</th>
-                            <th>Benchmark Cost</th>
-                            <th>Last 3 Prod Avg</th>
-                            <th>Last 3 Mo Avg</th>
-                            <th>Last 12 Mo Avg</th>
-                            <th data-field-path="toc.newBenchmark">New Benchmark</th>
-                            <th>% Dev</th>
-                            <th data-section="toc">Status</th>
-                            
-                            <!-- Time columns -->
-                            <th class="section-divider" data-field-path="time.correct">Correct Time</th>
-                            <th>Benchmark Time</th>
-                            <th>Last 3 Prod Avg</th>
-                            <th>Last 3 Mo Avg</th>
-                            <th>Last 12 Mo Avg</th>
-                            <th data-field-path="time.newBenchmark">New Benchmark</th>
-                            <th>% Dev</th>
-                            <th data-section="time">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody id="table-body">
-                        <!-- Data will be populated by JavaScript -->
-                    </tbody>
-                </table>
+        <!-- FG System Container -->
+        <div id="fg-content" class="system-container">
+             <!-- Controls Panel -->
+            <div class="controls-panel">
+                <div class="controls-row">
+                    <button class="btn btn-primary" id="fg-run-ai-btn">🤖 Run AI Cost Analysis</button>
+                    <button class="btn btn-primary" id="fg-smart-rec-btn">💡 Smart Recommendations</button>
+                    <button class="btn btn-primary" id="fg-bulk-update-btn">🔄 Bulk Update Benchmarks</button>
+                    <button class="btn btn-secondary" id="fg-save-btn">💾 Save to Sheets</button>
+                    <button class="btn btn-secondary" id="fg-refresh-btn">🔄 Refresh Data</button>
+                    <span class="refresh-timestamp" id="fg-refresh-time"></span>
+                </div>
+            </div>
+            <!-- Data Table -->
+            <div class="data-table-container">
+                <div class="table-wrapper">
+                    <table class="data-table" id="costing-table-fg">
+                        <thead>
+                            <tr>
+                                <th rowspan="3">Product Name</th><th rowspan="3">Production ID</th><th rowspan="3">Package</th><th rowspan="3">Qty</th><th rowspan="3" class="notes-col">Notes</th><th rowspan="3" class="ai-notes-col">AI Notes</th>
+                                <th colspan="8" class="section-divider">CA Cost Analysis (₹/Unit)</th><th colspan="8" class="section-divider">TOC Cost Analysis (₹/Unit)</th><th colspan="8" class="section-divider">Time Analysis</th>
+                            </tr>
+                            <tr>
+                                <td colspan="8" class="section-controls">
+                                    <div style="display: flex; justify-content: space-around; align-items: center; font-size: 11px;">
+                                        <span>Bulk Status:
+                                            <select id="ca-bulk-status-fg" style="font-size: 11px; padding: 1px;"><option value="update">Update</option><option value="no_need">No Need</option></select>
+                                            <button id="fg-bulk-status-ca-btn" style="font-size: 11px; padding: 1px 3px;">Apply</button>
+                                        </span>
+                                        <span style="display: inline-flex; align-items: center; gap: 5px;">Filter Dev %:
+                                            <input type="range" id="ca-deviation-filter-fg" min="0" max="100" value="0" style="width: 80px; vertical-align: middle;">
+                                            <input type="number" id="ca-deviation-input-fg" min="0" max="100" value="0" style="width: 50px;">
+                                        </span>
+                                    </div>
+                                </td>
+                                <td colspan="8" class="section-controls">
+                                    <div style="display: flex; justify-content: space-around; align-items: center; font-size: 11px;">
+                                        <span>Bulk Status:
+                                            <select id="toc-bulk-status-fg" style="font-size: 11px; padding: 1px;"><option value="update">Update</option><option value="no_need">No Need</option></select>
+                                            <button id="fg-bulk-status-toc-btn" style="font-size: 11px; padding: 1px 3px;">Apply</button>
+                                        </span>
+                                        <span style="display: inline-flex; align-items: center; gap: 5px;">Filter Dev %:
+                                            <input type="range" id="toc-deviation-filter-fg" min="0" max="100" value="0" style="width: 80px; vertical-align: middle;">
+                                            <input type="number" id="toc-deviation-input-fg" min="0" max="100" value="0" style="width: 50px;">
+                                        </span>
+                                    </div>
+                                </td>
+                                <td colspan="8" class="section-controls">
+                                    <div style="display: flex; justify-content: space-around; align-items: center; font-size: 11px;">
+                                        <span>Bulk Status:
+                                            <select id="time-bulk-status-fg" style="font-size: 11px; padding: 1px;"><option value="update">Update</option><option value="no_need">No Need</option></select>
+                                            <button id="fg-bulk-status-time-btn" style="font-size: 11px; padding: 1px 3px;">Apply</button>
+                                        </span>
+                                        <span style="display: inline-flex; align-items: center; gap: 5px;">Filter Dev %:
+                                            <input type="range" id="time-deviation-filter-fg" min="0" max="100" value="0" style="width: 80px; vertical-align: middle;">
+                                            <input type="number" id="time-deviation-input-fg" min="0" max="100" value="0" style="width: 50px;">
+                                        </span>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th data-field-path="ca.correct">Correct CA</th><th>Benchmark Cost</th><th>Last 3 Prod Avg</th><th>Last 3 Mo Avg</th><th>Last 12 Mo Avg</th><th data-field-path="ca.newBenchmark">New Benchmark</th><th>% Dev</th><th data-section="ca">Status</th>
+                                <th class="section-divider" data-field-path="toc.correct">Correct TOC</th><th>Benchmark Cost</th><th>Last 3 Prod Avg</th><th>Last 3 Mo Avg</th><th>Last 12 Mo Avg</th><th data-field-path="toc.newBenchmark">New Benchmark</th><th>% Dev</th><th data-section="toc">Status</th>
+                                <th class="section-divider" data-field-path="time.correct">Correct Time</th><th>Benchmark Time</th><th>Last 3 Prod Avg</th><th>Last 3 Mo Avg</th><th>Last 12 Mo Avg</th><th data-field-path="time.newBenchmark">New Benchmark</th><th>% Dev</th><th data-section="time">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body-fg"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
@@ -164,8 +209,8 @@
                 <input type="text" id="edit-new-value">
             </div>
             <div class="modal-actions">
-                <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="saveEdit()">Save Changes</button>
+                <button class="btn btn-secondary" id="modal-cancel-btn">Cancel</button>
+                <button class="btn btn-primary" id="modal-save-btn">Save Changes</button>
             </div>
         </div>
     </div>
