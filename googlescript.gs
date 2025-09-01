@@ -4,57 +4,58 @@
  * Handles OpenAI integration, Google Sheets operations, and data processing
  */
 
-const CONFIG = {
+const SHARED_CONFIG = {
   // API key is fetched from Script Properties for security
   OPENAI_API_KEY: PropertiesService.getScriptProperties().getProperty('openai_key'),
-  
-  // Google Sheets configuration
   SHEET_ID: '1J17ADExIvGd8WNFODQtouhv9kWnU9aPzPnaMbazmwtg',
-  DATA_SHEET_NAME: 'SFG REVIEW SYSTEM',
-  
-  // Row configuration
-  HEADER_ROW: 7,        // Row number where headers are located
-  DATA_START_ROW: 8,    // Row number where data starts
-  
-  // Column mapping - specify which columns contain your data
-  COLUMN_MAPPING: {
-    productName: 'G',      // or use column index: 1
-    productionId: 'B',     // or use column index: 2
-    package: 'D',          // or use column index: 3
-    qty: 'N',              // or use column index: 4
-    notes: 'BJ',           // Notes column
-    
-    // CA Cost columns
-    caCorrect: 'CX',        // Column for CA Correct value
-    caBenchmark: 'CY',      // Column for CA Benchmark cost
-    caLast3Prod: 'CZ',      // Column for CA Last 3 Production avg
-    caLast3Month: 'DA',     // Column for CA Last 3 Month avg
-    caLast12Month: 'DB',    // Column for CA Last 12 Month avg
-    caNewBenchmark: 'CX',   // Column for CA New Benchmark
-    caStatus: 'DD',         // Column for CA Status
-    
-    // TOC Cost columns
-    tocCorrect: 'DE',
-    tocBenchmark: 'DF',
-    tocLast3Prod: 'DG',
-    tocLast3Month: 'DH',
-    tocLast12Month: 'DI',
-    tocNewBenchmark: 'DE',
-    tocStatus: 'DK',
-
-    // Time columns
-    timeCorrect: 'DL',
-    timeBenchmark: 'DM',
-    timeLast3Prod: 'DN',
-    timeLast3Month: 'DO',
-    timeLast12Month: 'DP',
-    timeNewBenchmark: 'DL',
-    timeStatus: 'DR'
-  },
   
   // OpenAI configuration
   OPENAI_MODEL: 'gpt-4o',
   OPENAI_API_URL: 'https://api.openai.com/v1/chat/completions'
+};
+
+const CONFIG_SFG = {
+  DATA_SHEET_NAME: 'SFG REVIEW SYSTEM',
+  HEADER_ROW: 7,
+  DATA_START_ROW: 8,
+  COLUMN_MAPPING: {
+    productName: 'G', productionId: 'B', package: 'D', qty: 'N', notes: 'BJ',
+    caCorrect: 'CX', caBenchmark: 'CY', caLast3Prod: 'CZ', caLast3Month: 'DA', caLast12Month: 'DB', caNewBenchmark: 'CX', caStatus: 'DD',
+    tocCorrect: 'DE', tocBenchmark: 'DF', tocLast3Prod: 'DG', tocLast3Month: 'DH', tocLast12Month: 'DI', tocNewBenchmark: 'DE', tocStatus: 'DK',
+    timeCorrect: 'DL', timeBenchmark: 'DM', timeLast3Prod: 'DN', timeLast3Month: 'DO', timeLast12Month: 'DP', timeNewBenchmark: 'DL', timeStatus: 'DR'
+  },
+  // SFG-specific filter: B is not null AND CU is not null AND CV is null
+  filterCondition: (row) => {
+    const columnB = row[1]; // Column B (0-based index = 1)
+    const columnCU = row[98]; // Column CU (0-based index = 98)
+    const columnCV = row[99]; // Column CV (0-based index = 99)
+    const conditionB = columnB !== null && columnB !== undefined && columnB !== '';
+    const conditionCU = columnCU !== null && columnCU !== undefined && columnCU !== '';
+    const conditionCV = columnCV === null || columnCV === undefined || columnCV === '';
+    return conditionB && conditionCU && conditionCV;
+  }
+};
+
+const CONFIG_FG = {
+  DATA_SHEET_NAME: 'FG REVIEW SYSTEM',
+  HEADER_ROW: 7,
+  DATA_START_ROW: 8,
+  COLUMN_MAPPING: { // Assuming same column mapping for now, can be adjusted
+    productName: 'I', productionId: 'B', package: 'J', qty: 'Q', notes: 'BM',
+    caCorrect: 'DA', caBenchmark: 'DB', caLast3Prod: 'DC', caLast3Month: 'DD', caLast12Month: 'DE', caNewBenchmark: 'DA', caStatus: 'DG',
+    tocCorrect: 'DH', tocBenchmark: 'DI', tocLast3Prod: 'DJ', tocLast3Month: 'DK', tocLast12Month: 'DL', tocNewBenchmark: 'DH', tocStatus: 'DN',
+    timeCorrect: 'DO', timeBenchmark: 'DP', timeLast3Prod: 'DQ', timeLast3Month: 'DR', timeLast12Month: 'DS', timeNewBenchmark: 'DO', timeStatus: 'DU'
+  },
+  // FG-specific filter (currently none, imports all rows)
+  filterCondition: (row) => {
+    const columnB = row[1]; // Column B (0-based index = 1)
+    const columnCU = row[101]; // Column CU (0-based index = 98)
+    const columnCV = row[102]; // Column CV (0-based index = 99)
+    const conditionB = columnB !== null && columnB !== undefined && columnB !== '';
+    const conditionCU = columnCU !== null && columnCU !== undefined && columnCU !== '';
+    const conditionCV = columnCV === null || columnCV === undefined || columnCV === '';
+    return conditionB && conditionCU && conditionCV;
+  }
 };
 
 function columnLetterToIndex(letter) {
@@ -84,89 +85,76 @@ function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
+/**
+ * Public functions to be called from the client-side script
+ */
+function importSfgData() {
+  return importCostingData_(CONFIG_SFG);
+}
+
+function importFgData() {
+  return importCostingData_(CONFIG_FG);
+}
 
 /**
- * Simplified import function with direct filtering
+ * Generic import function that accepts a configuration object.
+ * @private
  */
-function importCostingData() {
+function importCostingData_(config) {
   try {
-    const sheet = getDataSheet();
-    
-    // Get the data range
+    const sheet = getDataSheet_(config);
     const lastRow = sheet.getLastRow();
     const lastCol = sheet.getLastColumn();
     
-    console.log(`Sheet dimensions: ${lastRow} rows, ${lastCol} columns`);
+    console.log(`Sheet: ${config.DATA_SHEET_NAME}, Dimensions: ${lastRow} rows, ${lastCol} columns`);
     
-    if (lastRow < CONFIG.DATA_START_ROW) {
+    if (lastRow < config.DATA_START_ROW) {
       console.log('No data rows found');
       return [];
     }
     
-    // Get headers if they exist
     let headers = [];
-    if (CONFIG.HEADER_ROW && CONFIG.HEADER_ROW <= lastRow && CONFIG.HEADER_ROW > 0) {
-      headers = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getValues()[0];
-      console.log('Headers found:', headers.slice(0, 10));
+    if (config.HEADER_ROW > 0) {
+      headers = sheet.getRange(config.HEADER_ROW, 1, 1, lastCol).getValues()[0];
     }
     
-    // Calculate data range dimensions
-    const dataRows = lastRow - CONFIG.DATA_START_ROW + 1;
-    
+    const dataRows = lastRow - config.DATA_START_ROW + 1;
     if (dataRows <= 0) {
       console.log('No data rows to process');
       return [];
     }
     
-    // Get data starting from DATA_START_ROW
-    console.log(`Getting data range: Row ${CONFIG.DATA_START_ROW}, Col 1, ${dataRows} rows, ${lastCol} cols`);
-    const dataRange = sheet.getRange(CONFIG.DATA_START_ROW, 1, dataRows, lastCol);
+    const dataRange = sheet.getRange(config.DATA_START_ROW, 1, dataRows, lastCol);
     const rawData = dataRange.getValues();
-    
-    console.log(`Processing ${rawData.length} raw data rows`);
-    
     const costingData = [];
     let skippedRows = 0;
     
     for (let i = 0; i < rawData.length; i++) {
       const row = rawData[i];
-      const rowIndex = CONFIG.DATA_START_ROW + i;
+      const rowIndex = config.DATA_START_ROW + i;
       
       try {
-        // Extract data using column mapping
-        const extractedData = extractRowData(row, CONFIG.COLUMN_MAPPING, headers);
-        
-        // Apply direct filter condition: B is not null AND CU is not null AND CV is null
-        const columnB = row[1]; // Column B (0-based index = 1)
-        const columnCU = row[98]; // Column CU (0-based index = 98)
-        const columnCV = row[99]; // Column CV (0-based index = 99)
-        
-        const conditionB = columnB !== null && columnB !== undefined && columnB !== '';
-        const conditionCU = columnCU !== null && columnCU !== undefined && columnCU !== '';
-        const conditionCV = columnCV === null || columnCV === undefined || columnCV === '';
-        
-        if (!(conditionB && conditionCU && conditionCV)) {
+        if (!config.filterCondition(row)) {
           skippedRows++;
           continue;
         }
         
-        // Create the item object
+        const extractedData = extractRowData(row, config.COLUMN_MAPPING, headers);
         const item = createItemFromData(extractedData);
         costingData.push(item);
         
       } catch (error) {
-        console.error(`Error processing row ${rowIndex}:`, error.message);
+        console.error(`Error processing row ${rowIndex} in ${config.DATA_SHEET_NAME}:`, error.message);
         skippedRows++;
       }
     }
     
-    console.log(`Import completed: ${costingData.length} items imported, ${skippedRows} rows skipped`);
-    
+    console.log(`Import for ${config.DATA_SHEET_NAME} completed: ${costingData.length} items imported, ${skippedRows} rows skipped`);
     return costingData;
     
   } catch (error) {
-    console.error('Error importing data:', error);
-    throw new Error('Failed to import data from Google Sheets: ' + error.message);
+    console.error(`Error importing data from ${config.DATA_SHEET_NAME}:`, error);
+    throw new Error(`Failed to import data from ${config.DATA_SHEET_NAME}: ` + error.message);
   }
 }
 
@@ -264,9 +252,9 @@ function normalizeStatus(status) {
   const statusStr = (status || '').toString().toLowerCase().trim();
   
   if (statusStr.includes('no need')) return 'no_need';
-  if (statusStr.includes('update benchmark cost')) return 'update';
+  if (statusStr.includes('update')) return 'update';
   
-  return 'no_need'; // Default to 'update'
+  return 'action_required';
 }
 
 /**
@@ -307,21 +295,29 @@ function normalizeTime(timeValue) {
 
 
 
+function saveSfgData(updatedCostingData) {
+  return saveCostingData_(updatedCostingData, CONFIG_SFG);
+}
+
+function saveFgData(updatedCostingData) {
+  return saveCostingData_(updatedCostingData, CONFIG_FG);
+}
+
 /**
- * Save costing data to Google Sheets by updating individual cells.
- * Note: This method can be slow if updating a large number of rows simultaneously,
- * as it makes multiple write calls to the Google Sheets API.
+ * Generic save function that accepts a configuration object.
+ * @private
  */
-function saveCostingData(updatedCostingData) {
+function saveCostingData_(updatedCostingData, config) {
   try {
-    const sheet = getDataSheet();
+    const sheet = getDataSheet_(config);
     const range = sheet.getDataRange();
     const values = range.getValues();
     
     // Create a map of production IDs to row index for faster lookups
     const productionIdToRowIndex = {};
-    for (let i = CONFIG.HEADER_ROW; i < values.length; i++) {
-      const productionId = values[i][columnLetterToIndex(CONFIG.COLUMN_MAPPING.productionId) - 1];
+    const prodIdColIndex = columnLetterToIndex(config.COLUMN_MAPPING.productionId) - 1;
+    for (let i = config.HEADER_ROW; i < values.length; i++) {
+      const productionId = values[i][prodIdColIndex];
       if (productionId) {
         productionIdToRowIndex[productionId] = i + 1; // Use 1-based index for getRange
       }
@@ -330,21 +326,26 @@ function saveCostingData(updatedCostingData) {
     updatedCostingData.forEach(item => {
       const rowIndex = productionIdToRowIndex[item.productionId];
       if (rowIndex !== undefined) {
-        // Update the 6 specific columns for the given row
-        sheet.getRange(rowIndex, columnLetterToIndex(CONFIG.COLUMN_MAPPING.caNewBenchmark)).setValue(item.ca.newBenchmark);
-        sheet.getRange(rowIndex, columnLetterToIndex(CONFIG.COLUMN_MAPPING.caStatus)).setValue(item.ca.status);
-        sheet.getRange(rowIndex, columnLetterToIndex(CONFIG.COLUMN_MAPPING.tocNewBenchmark)).setValue(item.toc.newBenchmark);
-        sheet.getRange(rowIndex, columnLetterToIndex(CONFIG.COLUMN_MAPPING.tocStatus)).setValue(item.toc.status);
-        sheet.getRange(rowIndex, columnLetterToIndex(CONFIG.COLUMN_MAPPING.timeNewBenchmark)).setValue(item.time.newBenchmark);
-        sheet.getRange(rowIndex, columnLetterToIndex(CONFIG.COLUMN_MAPPING.timeStatus)).setValue(item.time.status);
+        if (item.ca.status !== 'action_required') {
+            sheet.getRange(rowIndex, columnLetterToIndex(config.COLUMN_MAPPING.caNewBenchmark)).setValue(item.ca.newBenchmark);
+            sheet.getRange(rowIndex, columnLetterToIndex(config.COLUMN_MAPPING.caStatus)).setValue(item.ca.status);
+        }
+        if (item.toc.status !== 'action_required') {
+            sheet.getRange(rowIndex, columnLetterToIndex(config.COLUMN_MAPPING.tocNewBenchmark)).setValue(item.toc.newBenchmark);
+            sheet.getRange(rowIndex, columnLetterToIndex(config.COLUMN_MAPPING.tocStatus)).setValue(item.toc.status);
+        }
+        if (item.time.status !== 'action_required') {
+            sheet.getRange(rowIndex, columnLetterToIndex(config.COLUMN_MAPPING.timeNewBenchmark)).setValue(item.time.newBenchmark);
+            sheet.getRange(rowIndex, columnLetterToIndex(config.COLUMN_MAPPING.timeStatus)).setValue(item.time.status);
+        }
       }
     });
     
-    return { success: true, message: 'Data saved successfully' };
+    return { success: true, message: 'Data saved successfully to ' + config.DATA_SHEET_NAME };
     
   } catch (error) {
-    console.error('Error saving data:', error);
-    throw new Error('Failed to save data to Google Sheets: ' + error.message);
+    console.error(`Error saving data to ${config.DATA_SHEET_NAME}:`, error);
+    throw new Error(`Failed to save data to ${config.DATA_SHEET_NAME}: ` + error.message);
   }
 }
 
@@ -353,7 +354,7 @@ function saveCostingData(updatedCostingData) {
  */
 function runOpenAIAnalysis(deviations) {
   try {
-    if (!CONFIG.OPENAI_API_KEY || CONFIG.OPENAI_API_KEY === 'your-openai-api-key-here') {
+    if (!SHARED_CONFIG.OPENAI_API_KEY || SHARED_CONFIG.OPENAI_API_KEY === 'your-openai-api-key-here') {
       throw new Error('OpenAI API key not configured');
     }
     
@@ -364,9 +365,8 @@ function runOpenAIAnalysis(deviations) {
     
   } catch (error) {
     console.error('OpenAI Analysis Error:', error);
-    
-    // Fallback to local analysis
-    return generateLocalAnalysis(deviations);
+    // Re-throw the error to be caught by the frontend's onFailure handler
+    throw new Error('AI Analysis Failed: ' + error.message);
   }
 }
 
@@ -377,7 +377,7 @@ function buildAnalysisPrompt(deviations) {
   const formatPromptValue = (value, prefix = '₹') => {
     if (typeof value === 'string') return value; // 'No data'
     if (typeof value !== 'number') return value;
-    return `${prefix}${value.toFixed(2)}`;
+    return `${prefix}${value}`;
   };
 
   let prompt = `You are a cost analysis expert. For each item below, decide if the benchmark cost needs to be updated based on recent data.
@@ -389,12 +389,11 @@ COST DEVIATIONS:
     prompt += `
 ${index + 1}. Product: ${dev.product} (${dev.productionId})
    Type: ${dev.type}
-   Current Benchmark: ${formatPromptValue(dev.currentBenchmark)}
-   Proposed Benchmark: ${formatPromptValue(dev.proposedBenchmark)}
-   Deviation: ${dev.deviation.toFixed(1)}%
-   Last 3 Production Avg: ${formatPromptValue(dev.last3Avg)}
-   Last 3 Month Avg: ${formatPromptValue(dev.last3MonthAvg)}
-   Last 12 Month Avg: ${formatPromptValue(dev.last12MonthAvg)}
+   Current Benchmark: ${formatPromptValue(dev.benchmark)}
+   Proposed Benchmark: ${formatPromptValue(dev.newBenchmark)}
+   Last 3 Production Avg: ${formatPromptValue(dev.last3Prod)}
+   Last 3 Month Avg: ${formatPromptValue(dev.last3Month)}
+   Last 12 Month Avg: ${formatPromptValue(dev.last12Month)}
 `;
     if (dev.notes) {
         prompt += `   Human Notes: ${dev.notes}\n`;
@@ -432,7 +431,7 @@ Data Security:
  */
 function callOpenAI(prompt) {
   const payload = {
-    model: CONFIG.OPENAI_MODEL,
+    model: SHARED_CONFIG.OPENAI_MODEL,
     messages: [
       {
         role: "system",
@@ -450,13 +449,13 @@ function callOpenAI(prompt) {
   const options = {
     method: 'POST',
     headers: {
-      'Authorization': 'Bearer ' + CONFIG.OPENAI_API_KEY,
+      'Authorization': 'Bearer ' + SHARED_CONFIG.OPENAI_API_KEY,
       'Content-Type': 'application/json'
     },
     payload: JSON.stringify(payload)
   };
 
-  const response = UrlFetchApp.fetch(CONFIG.OPENAI_API_URL, options);
+  const response = UrlFetchApp.fetch(SHARED_CONFIG.OPENAI_API_URL, options);
   const responseData = JSON.parse(response.getContentText());
   
   if (responseData.error) {
@@ -631,15 +630,16 @@ function exportToPDF(costingData) {
 }
 
 /**
- * Get or create the data sheet
+ * Get the data sheet based on configuration.
+ * @private
  */
-function getDataSheet() {
+function getDataSheet_(config) {
   try {
-    const spreadsheet = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-    const sheet = spreadsheet.getSheetByName(CONFIG.DATA_SHEET_NAME);
+    const spreadsheet = SpreadsheetApp.openById(SHARED_CONFIG.SHEET_ID);
+    const sheet = spreadsheet.getSheetByName(config.DATA_SHEET_NAME);
     
     if (!sheet) {
-      throw new Error(`Sheet "${CONFIG.DATA_SHEET_NAME}" not found in spreadsheet`);
+      throw new Error(`Sheet "${config.DATA_SHEET_NAME}" not found in spreadsheet`);
     }
     
     return sheet;
