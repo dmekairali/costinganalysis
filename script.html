@@ -141,29 +141,48 @@ function createCostSectionRow(item, section, originalIndex) {
 // Core Logic & Actions (AI, Bulk Updates)
 // =================================================================================
 function runAIAnalysis() {
-    showNotification('🤖 Running AI analysis...', 'info');
+    showNotification('🤖 Running AI analysis for all items...', 'info');
     showLoading(true);
     const { costingData } = getActiveSystemContext();
-    const deviations = analyzeDeviationsForAI(costingData);
-    console.log(deviations)
-    if (deviations.length === 0) {
+    
+    if (!costingData || costingData.length === 0) {
         showLoading(false);
-        showNotification('No significant deviations found.', 'success');
+        showNotification('No data available to analyze.', 'info');
         return;
     }
-    google.script.run.withSuccessHandler(handleAIAnalysisSuccess).withFailureHandler(handleAIAnalysisFailure).runOpenAIAnalysis(deviations);
+
+    // Pass the entire costingData array to the backend for analysis.
+    // The array is mapped to include the original index for each item.
+    const itemsToAnalyze = costingData.map((item, index) => ({ ...item, originalIndex: index }));
+
+    google.script.run
+        .withSuccessHandler(handleAIAnalysisSuccess)
+        .withFailureHandler(handleAIAnalysisFailure)
+        .runOpenAIAnalysis(itemsToAnalyze);
 }
 
 function handleAIAnalysisSuccess(aiRecommendations) {
     showLoading(false);
-    const { costingData } = getActiveSystemContext();
+    const { costingData, deviationFilterIds } = getActiveSystemContext();
+    
     aiRecommendations.forEach(rec => {
         const item = costingData[rec.index];
-        if (!item) return;
-        const section = rec.type.split(' ')[0].toLowerCase();
-        item[section].status = rec.status;
-        item.aiNotes = (item.aiNotes ? item.aiNotes + '\n' : '') + `${rec.type}: ${rec.decisionNotes}`;
+        if (item) {
+            item.ca.status = rec.status;
+            item.toc.status = rec.status;
+            item.time.status = rec.status;
+            item.aiNotes = (item.aiNotes ? item.aiNotes + '\n' : '') + `AI: ${rec.decisionNotes}`;
+        }
     });
+
+    // Reset deviation filters to ensure all rows are visible
+    for (const key in deviationFilterIds) {
+        const sliderId = deviationFilterIds[key];
+        const inputId = sliderId.replace('-filter-', '-input-');
+        $(sliderId).val(0);
+        $(inputId).val(0);
+    }
+
     filterAndPopulate();
     showNotification('AI analysis complete. Table updated.', 'success');
 }
@@ -172,36 +191,6 @@ function handleAIAnalysisFailure(error) {
     showLoading(false);
     console.error('AI Analysis Error:', error);
     showNotification('AI Analysis Failed: ' + error.message, 'error');
-}
-
-function analyzeDeviationsForAI(data) {
-    const deviations = [];
-    data.forEach((item, index) => {
-        ['ca', 'toc', 'time'].forEach(type => {
-            if (item[type].benchmark > 0) {
-                const deviation = type === 'time' ? calculateTimeDeviation(item[type].benchmark, item[type].newBenchmark) : calculateDeviation(item[type].benchmark, item[type].newBenchmark);
-                if (Math.abs(parseFloat(deviation)) > 5) {
-                    deviations.push({ index, product: item.productName, productionId: item.productionId, type: type.toUpperCase() + (type !== 'time' ? ' Cost' : ''), ...item[type] });
-                }
-            }
-        });
-    });
-    return deviations;
-}
-
-function generateSmartRecommendations() {
-    const { costingData } = getActiveSystemContext();
-    const deviations = analyzeDeviationsForAI(costingData);
-    if (deviations.length === 0) {
-        showNotification('No significant deviations found.', 'success');
-        return;
-    }
-    let recommendations = "🎯 Smart Cost Recommendations:\n\n";
-    deviations.forEach((dev, index) => {
-        const action = dev.deviation > 15 ? "URGENT" : "REVIEW";
-        recommendations += `${index + 1}. ${dev.product} (${dev.type}): ${dev.deviation.toFixed(1)}% | Action: ${action}\n`;
-    });
-    alert(recommendations);
 }
 
 function bulkUpdateBenchmarks() {
@@ -247,10 +236,31 @@ function saveData() {
     const { costingData, saveFunc } = getActiveSystemContext();
     showNotification(`Saving data for ${activeSystem.toUpperCase()}...`, 'info');
     showLoading(true);
+    
     google.script.run.withSuccessHandler(response => {
-        showLoading(false); showNotification(response.message, 'success');
+        showLoading(false);
+        showNotification(response.message, 'success');
+
+        // Filter out completed rows after successful save
+        const remainingData = getActiveSystemContext().costingData.filter(item => {
+            const caDone = item.ca.status !== 'action_required';
+            const tocDone = item.toc.status !== 'action_required';
+            const timeDone = item.time.status !== 'action_required';
+            return !(caDone && tocDone && timeDone); // Keep item if any section still requires action
+        });
+
+        if (activeSystem === 'sfg') {
+            sfgCostingData = remainingData;
+        } else {
+            fgCostingData = remainingData;
+        }
+
+        filterAndPopulate();
+        updateMLInsights();
+
     }).withFailureHandler(error => {
-        showLoading(false); showNotification('Save failed.', 'error');
+        showLoading(false);
+        showNotification('Save failed.', 'error');
     })[saveFunc](costingData);
 }
 
@@ -308,7 +318,6 @@ function attachEventListeners() {
 
     // Main Controls
     $('#sfg-run-ai-btn, #fg-run-ai-btn').on('click', runAIAnalysis);
-    $('#sfg-smart-rec-btn, #fg-smart-rec-btn').on('click', generateSmartRecommendations);
     $('#sfg-bulk-update-btn, #fg-bulk-update-btn').on('click', bulkUpdateBenchmarks);
     $('#sfg-save-btn, #fg-save-btn').on('click', saveData);
     $('#sfg-refresh-btn, #fg-refresh-btn').on('click', refreshData);
@@ -363,9 +372,9 @@ function filterAndPopulate() {
     const tocDevFilter = parseFloat($(deviationFilterIds.toc).val());
     const timeDevFilter = parseFloat($(deviationFilterIds.time).val());
     const newFilteredData = costingData.filter(item => {
-        const caDev = parseFloat(calculateDeviation(item.ca.benchmark, item.ca.newBenchmark)) || 0;
-        const tocDev = parseFloat(calculateDeviation(item.toc.benchmark, item.toc.newBenchmark)) || 0;
-        const timeDev = parseFloat(calculateTimeDeviation(item.time.benchmark, item.time.newBenchmark)) || 0;
+        const caDev = Math.abs(parseFloat(calculateDeviation(item.ca.benchmark, item.ca.newBenchmark))) || 0;
+        const tocDev = Math.abs(parseFloat(calculateDeviation(item.toc.benchmark, item.toc.newBenchmark))) || 0;
+        const timeDev = Math.abs(parseFloat(calculateTimeDeviation(item.time.benchmark, item.time.newBenchmark))) || 0;
         return caDev >= caDevFilter && tocDev >= tocDevFilter && timeDev >= timeDevFilter;
     });
     if (activeSystem === 'sfg') { sfgFilteredCostingData = newFilteredData; } else { fgFilteredCostingData = newFilteredData; }
