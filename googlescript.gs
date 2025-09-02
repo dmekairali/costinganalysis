@@ -22,7 +22,14 @@ const CONFIG_SFG = {
     productName: 'G', productionId: 'B', package: 'D', qty: 'N', notes: 'BJ',
     caCorrect: 'CX', caBenchmark: 'CY', caLast3Prod: 'CZ', caLast3Month: 'DA', caLast12Month: 'DB', caNewBenchmark: 'CX', caStatus: 'DD',
     tocCorrect: 'DE', tocBenchmark: 'DF', tocLast3Prod: 'DG', tocLast3Month: 'DH', tocLast12Month: 'DI', tocNewBenchmark: 'DE', tocStatus: 'DK',
-    timeCorrect: 'DL', timeBenchmark: 'DM', timeLast3Prod: 'DN', timeLast3Month: 'DO', timeLast12Month: 'DP', timeNewBenchmark: 'DL', timeStatus: 'DR'
+    timeCorrect: 'DL', timeBenchmark: 'DM', timeLast3Prod: 'DN', timeLast3Month: 'DO', timeLast12Month: 'DP', timeNewBenchmark: 'DL', timeStatus: 'DR',
+
+    updatecaNewBenchmark:'DC',
+    updatecaStaus: 'DD',
+    updatetocNewBenchmark:'DJ',
+    updatetocStaus: 'DK',
+    updatetimeNewBenchmark:'DQ',
+    updatetimeStaus: 'DR'
   },
   // SFG-specific filter: B is not null AND CU is not null AND CV is null
   filterCondition: (row) => {
@@ -44,7 +51,14 @@ const CONFIG_FG = {
     productName: 'I', productionId: 'B', package: 'J', qty: 'Q', notes: 'BM',
     caCorrect: 'DA', caBenchmark: 'DB', caLast3Prod: 'DC', caLast3Month: 'DD', caLast12Month: 'DE', caNewBenchmark: 'DA', caStatus: 'DG',
     tocCorrect: 'DH', tocBenchmark: 'DI', tocLast3Prod: 'DJ', tocLast3Month: 'DK', tocLast12Month: 'DL', tocNewBenchmark: 'DH', tocStatus: 'DN',
-    timeCorrect: 'DO', timeBenchmark: 'DP', timeLast3Prod: 'DQ', timeLast3Month: 'DR', timeLast12Month: 'DS', timeNewBenchmark: 'DO', timeStatus: 'DU'
+    timeCorrect: 'DO', timeBenchmark: 'DP', timeLast3Prod: 'DQ', timeLast3Month: 'DR', timeLast12Month: 'DS', timeNewBenchmark: 'DO', timeStatus: 'DU',
+
+    updatecaNewBenchmark:'DF',
+    updatecaStaus: 'DG',
+    updatetocNewBenchmark:'DM',
+    updatetocStaus: 'DN',
+    updatetimeNewBenchmark:'DT',
+    updatetimeStaus: 'DU'
   },
   // FG-specific filter (currently none, imports all rows)
   filterCondition: (row) => {
@@ -296,6 +310,8 @@ function normalizeTime(timeValue) {
 
 
 function saveSfgData(updatedCostingData) {
+  //Logger.log(updatedCostingData);
+  //return { success: true, message: 'Data saved successfully to ' + config.DATA_SHEET_NAME };
   return saveCostingData_(updatedCostingData, CONFIG_SFG);
 }
 
@@ -323,20 +339,33 @@ function saveCostingData_(updatedCostingData, config) {
       }
     }
 
+    const mapStatus = (status) => {
+      Logger.log(status)
+        if (status === 'update') return 'Update Benchmark Cost';
+        if (status === 'no_need' || status === 'no need') return 'No Need';
+        return status; // Fallback for other statuses like 'action_required'
+    };
+
+     const mapStatusTime = (status) => {
+        if (status === 'update') return 'Update Benchmark Time';
+        if (status === 'no_need' || status === 'no need') return 'No Need';
+        return status; // Fallback for other statuses like 'action_required'
+    };
+
     updatedCostingData.forEach(item => {
       const rowIndex = productionIdToRowIndex[item.productionId];
       if (rowIndex !== undefined) {
         if (item.ca.status !== 'action_required') {
-            sheet.getRange(rowIndex, columnLetterToIndex(config.COLUMN_MAPPING.caNewBenchmark)).setValue(item.ca.newBenchmark);
-            sheet.getRange(rowIndex, columnLetterToIndex(config.COLUMN_MAPPING.caStatus)).setValue(item.ca.status);
+            sheet.getRange(rowIndex, columnLetterToIndex(config.COLUMN_MAPPING.updatecaNewBenchmark)).setValue(item.ca.newBenchmark);
+            sheet.getRange(rowIndex, columnLetterToIndex(config.COLUMN_MAPPING.updatecaStaus)).setValue(mapStatus(item.ca.status));
         }
         if (item.toc.status !== 'action_required') {
-            sheet.getRange(rowIndex, columnLetterToIndex(config.COLUMN_MAPPING.tocNewBenchmark)).setValue(item.toc.newBenchmark);
-            sheet.getRange(rowIndex, columnLetterToIndex(config.COLUMN_MAPPING.tocStatus)).setValue(item.toc.status);
+            sheet.getRange(rowIndex, columnLetterToIndex(config.COLUMN_MAPPING.updatetocNewBenchmark)).setValue(item.toc.newBenchmark);
+            sheet.getRange(rowIndex, columnLetterToIndex(config.COLUMN_MAPPING.updatetocStaus)).setValue(mapStatus(item.toc.status));
         }
         if (item.time.status !== 'action_required') {
-            sheet.getRange(rowIndex, columnLetterToIndex(config.COLUMN_MAPPING.timeNewBenchmark)).setValue(item.time.newBenchmark);
-            sheet.getRange(rowIndex, columnLetterToIndex(config.COLUMN_MAPPING.timeStatus)).setValue(item.time.status);
+            sheet.getRange(rowIndex, columnLetterToIndex(config.COLUMN_MAPPING.updatetimeNewBenchmark)).setValue(item.time.newBenchmark);
+            sheet.getRange(rowIndex, columnLetterToIndex(config.COLUMN_MAPPING.updatetimeStaus)).setValue(mapStatusTime(item.time.status));
         }
       }
     });
@@ -352,16 +381,16 @@ function saveCostingData_(updatedCostingData, config) {
 /**
  * Run OpenAI analysis on cost deviations
  */
-function runOpenAIAnalysis(deviations) {
+function runOpenAIAnalysis(items) {
   try {
     if (!SHARED_CONFIG.OPENAI_API_KEY || SHARED_CONFIG.OPENAI_API_KEY === 'your-openai-api-key-here') {
       throw new Error('OpenAI API key not configured');
     }
     
-    const prompt = buildAnalysisPrompt(deviations);
+    const prompt = buildAnalysisPrompt(items);
     const response = callOpenAI(prompt);
     
-    return parseAIResponse(response, deviations);
+    return parseAIResponse(response, items);
     
   } catch (error) {
     console.error('OpenAI Analysis Error:', error);
@@ -373,55 +402,53 @@ function runOpenAIAnalysis(deviations) {
 /**
  * Build prompt for OpenAI analysis
  */
-function buildAnalysisPrompt(deviations) {
-  const formatPromptValue = (value, prefix = '₹') => {
-    if (typeof value === 'string') return value; // 'No data'
-    if (typeof value !== 'number') return value;
-    return `${prefix}${value}`;
-  };
+function buildAnalysisPrompt(items) {
+  const formatCost = (value) => `₹${(value || 0).toFixed(2)}`;
+  const formatTime = (value) => value || '0:00:00';
 
-  let prompt = `You are a cost analysis expert. For each item below, decide if the benchmark cost needs to be updated based on recent data.
+  let prompt = `You are a cost analysis expert. For each item below, analyze the three cost sections (CA, TOC, Time) and provide a single, overall recommendation on whether to update the benchmark.
 
-COST DEVIATIONS:
+ITEMS:
 `;
 
-  deviations.forEach((dev, index) => {
+  items.forEach((item, index) => {
     prompt += `
-${index + 1}. Product: ${dev.product} (${dev.productionId})
-   Type: ${dev.type}
-   Current Benchmark: ${formatPromptValue(dev.benchmark)}
-   Proposed Benchmark: ${formatPromptValue(dev.newBenchmark)}
-   Last 3 Production Avg: ${formatPromptValue(dev.last3Prod)}
-   Last 3 Month Avg: ${formatPromptValue(dev.last3Month)}
-   Last 12 Month Avg: ${formatPromptValue(dev.last12Month)}
+${index + 1}. Product: ${item.productName} (${item.productionId})
+   Notes: ${item.notes || 'N/A'}
+   
+   CA Cost:
+     - Current Benchmark: ${formatCost(item.ca.benchmark)}
+     - Proposed Benchmark: ${formatCost(item.ca.newBenchmark)}
+     - Recent Averages: Last 3 Prod: ${formatCost(item.ca.last3Prod)}, Last 3 Month: ${formatCost(item.ca.last3Month)}
+
+   TOC Cost:
+     - Current Benchmark: ${formatCost(item.toc.benchmark)}
+     - Proposed Benchmark: ${formatCost(item.toc.newBenchmark)}
+     - Recent Averages: Last 3 Prod: ${formatCost(item.toc.last3Prod)}, Last 3 Month: ${formatCost(item.toc.last3Month)}
+
+   Time Analysis:
+     - Current Benchmark: ${formatTime(item.time.benchmark)}
+     - Proposed Benchmark: ${formatTime(item.time.newBenchmark)}
+     - Recent Averages: Last 3 Prod: ${formatTime(item.time.last3Prod)}, Last 3 Month: ${formatTime(item.time.last3Month)}
 `;
-    if (dev.notes) {
-        prompt += `   Human Notes: ${dev.notes}\n`;
-    }
   });
 
   prompt += `
 
-For each deviation, provide your recommendation in the following JSON format as an array of objects. Do not include any other text or explanations outside of the JSON.
+For each item, provide your recommendation in the following JSON format as an array of objects. Do not include any other text or explanations outside of the JSON.
 
 [
   {
     "status": "update" or "no_need",
-    "decisionNotes": "Your brief analysis and reasoning here (max 50 words)."
+    "decisionNotes": "Your brief, overall analysis and reasoning for the entire item here (max 50 words)."
   }
 ]
 
-Guidelines for your decision:
-- Base your decision on whether the 'Proposed Benchmark' is a realistic reflection of recent costs (Last 3 Production Avg, Last 3 Month Avg).
-- Use any provided 'Human Notes' as additional context, but do not base your decision solely on them.
-- If the 'Proposed Benchmark' aligns with recent trends and data, the status should be 'update'.
-- If the 'Proposed Benchmark' seems anomalous, or if the deviation is insignificant, the status should be 'no_need'.
-- If crucial data points are missing (indicated by "No data"), state this in your notes and be cautious. You might recommend 'no_need' pending more data.
-- Your 'decisionNotes' should be a concise summary of your reasoning.
-
-Data Security:
-- The data provided is confidential. Do not repeat or disclose any part of the input data in your response, other than what is explicitly required by the JSON format.
-- Your 'decisionNotes' should be a summary of your analysis, not a copy of the input data.`;
+Guidelines:
+- Base your decision on whether the 'Proposed Benchmark' values are a realistic reflection of recent costs across all three sections.
+- Use 'Human Notes' for context.
+- If proposed benchmarks align with recent trends, status should be 'update'.
+- If deviations are insignificant or data is inconsistent, status should be 'no_need'.`;
 
   return prompt;
 }
@@ -468,26 +495,32 @@ function callOpenAI(prompt) {
 /**
  * Parse AI response and combine with deviation data
  */
-function parseAIResponse(aiResponse, deviations) {
+function parseAIResponse(aiResponse, items) {
   try {
-    // The AI response might be enclosed in ```json ... ```, so let's strip that.
     const cleanedResponse = aiResponse.replace(/```json\n?/g, '').replace(/\n?```/g, '');
     const recommendations = JSON.parse(cleanedResponse);
+
+    if (!Array.isArray(recommendations)) {
+      throw new Error("AI response is not a JSON array.");
+    }
     
-    return deviations.map((dev, index) => {
+    return items.map((item, index) => {
       const aiRec = recommendations[index] || {};
       
       return {
-        ...dev,
-        status: aiRec.status || 'no_need', // Default to 'no_need' if missing
+        index: item.originalIndex, // Use the original index passed from the client
+        status: aiRec.status || 'no_need',
         decisionNotes: aiRec.decisionNotes || 'AI response format error.'
       };
     });
     
   } catch (error) {
     console.error('Error parsing AI response:', error, 'Raw response:', aiResponse);
-    // Fallback to local analysis if parsing fails
-    return generateLocalAnalysis(deviations);
+    return items.map(item => ({
+      index: item.originalIndex,
+      status: 'no_need',
+      decisionNotes: 'Error parsing AI response. Please check raw response.'
+    }));
   }
 }
 
