@@ -168,10 +168,16 @@ function handleAIAnalysisSuccess(aiRecommendations) {
     aiRecommendations.forEach(rec => {
         const item = costingData[rec.index];
         if (item) {
-            item.ca.status = rec.status;
-            item.toc.status = rec.status;
-            item.time.status = rec.status;
-            item.aiNotes = (item.aiNotes ? item.aiNotes + '\n' : '') + `AI: ${rec.decisionNotes}`;
+            item.ca.status = rec.ca_status;
+            item.toc.status = rec.toc_status;
+            item.time.status = rec.time_status;
+            
+            let notes = '';
+            if (rec.ca_notes) notes += `CA: ${rec.ca_notes}\n`;
+            if (rec.toc_notes) notes += `TOC: ${rec.toc_notes}\n`;
+            if (rec.time_notes) notes += `Time: ${rec.time_notes}\n`;
+            
+            item.aiNotes = (item.aiNotes ? item.aiNotes + '\n' : '') + notes.trim();
         }
     });
 
