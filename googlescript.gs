@@ -19,7 +19,7 @@ const CONFIG_SFG = {
   HEADER_ROW: 7,
   DATA_START_ROW: 8,
   COLUMN_MAPPING: {
-    productName: 'G', productionId: 'B', package: 'D', qty: 'N', notes: 'BJ',
+    productName: 'G', productionId: 'B', package: 'D', qty: 'N', notes: 'BJ',  timeCorrectiveRemarks: 'BP',
     caCorrect: 'CX', caBenchmark: 'CY', caLast3Prod: 'CZ', caLast3Month: 'DA', caLast12Month: 'DB', caNewBenchmark: 'CX', caStatus: 'DD',
     tocCorrect: 'DE', tocBenchmark: 'DF', tocLast3Prod: 'DG', tocLast3Month: 'DH', tocLast12Month: 'DI', tocNewBenchmark: 'DE', tocStatus: 'DK',
     timeCorrect: 'DL', timeBenchmark: 'DM', timeLast3Prod: 'DN', timeLast3Month: 'DO', timeLast12Month: 'DP', timeNewBenchmark: 'DL', timeStatus: 'DR',
@@ -48,7 +48,7 @@ const CONFIG_FG = {
   HEADER_ROW: 7,
   DATA_START_ROW: 8,
   COLUMN_MAPPING: { // Assuming same column mapping for now, can be adjusted
-    productName: 'I', productionId: 'B', package: 'J', qty: 'Q', notes: 'BM',
+    productName: 'I', productionId: 'B', package: 'J', qty: 'Q', notes: 'BM', timeCorrectiveRemarks: 'BS',
     caCorrect: 'DA', caBenchmark: 'DB', caLast3Prod: 'DC', caLast3Month: 'DD', caLast12Month: 'DE', caNewBenchmark: 'DA', caStatus: 'DG',
     tocCorrect: 'DH', tocBenchmark: 'DI', tocLast3Prod: 'DJ', tocLast3Month: 'DK', tocLast12Month: 'DL', tocNewBenchmark: 'DH', tocStatus: 'DN',
     timeCorrect: 'DO', timeBenchmark: 'DP', timeLast3Prod: 'DQ', timeLast3Month: 'DR', timeLast12Month: 'DS', timeNewBenchmark: 'DO', timeStatus: 'DU',
@@ -228,7 +228,11 @@ function createItemFromData(data) {
     productionId: (data.productionId || '').toString().trim(),
     package: (data.package || '').toString().trim(),
     qty: parseInt(data.qty) || 0,
-    notes: (data.notes || '').toString().trim(),
+    notes: [
+  data.notes && data.notes.toString().trim() ? `Cost Remarks - ${data.notes.toString().trim()}` : null,
+  data.timeCorrectiveRemarks && data.timeCorrectiveRemarks.toString().trim() ? `Time Remarks - ${data.timeCorrectiveRemarks.toString().trim()}` : null
+].filter(Boolean).join(', '),
+
     ca: {
       correct: parseFloat(data.caCorrect) || 0,
       benchmark: parseFloat(data.caBenchmark) || 0,
@@ -307,6 +311,23 @@ function normalizeTime(timeValue) {
   return '0:00:00';
 }
 
+/**
+ * Log a message to the 'Logs' sheet
+ */
+function logError(message) {
+  try {
+    const sheet = SpreadsheetApp.openById(SHARED_CONFIG.SHEET_ID).getSheetByName('Logs');
+    if (sheet) {
+      sheet.appendRow([new Date(), message]);
+    } else {
+      // Fallback to console.log if Logs sheet doesn't exist
+      console.log('Logs sheet not found. Error: ' + message);
+    }
+  } catch (e) {
+    console.error('Failed to log error to sheet:', e);
+  }
+}
+
 
 
 function saveSfgData(updatedCostingData) {
@@ -364,7 +385,8 @@ function saveCostingData_(updatedCostingData, config) {
             sheet.getRange(rowIndex, columnLetterToIndex(config.COLUMN_MAPPING.updatetocStaus)).setValue(mapStatus(item.toc.status));
         }
         if (item.time.status !== 'action_required') {
-            sheet.getRange(rowIndex, columnLetterToIndex(config.COLUMN_MAPPING.updatetimeNewBenchmark)).setValue(item.time.newBenchmark);
+            var timedisplay = sheet.getRange(rowIndex,columnLetterToIndex(config.COLUMN_MAPPING.timeCorrect)).getDisplayValue();
+            sheet.getRange(rowIndex, columnLetterToIndex(config.COLUMN_MAPPING.updatetimeNewBenchmark)).setValue(timedisplay);
             sheet.getRange(rowIndex, columnLetterToIndex(config.COLUMN_MAPPING.updatetimeStaus)).setValue(mapStatusTime(item.time.status));
         }
       }
@@ -406,7 +428,7 @@ function buildAnalysisPrompt(items) {
   const formatCost = (value) => `₹${(value || 0).toFixed(2)}`;
   const formatTime = (value) => value || '0:00:00';
 
-  let prompt = `You are a cost analysis expert. For each item below, analyze the three cost sections (CA, TOC, Time) and provide a single, overall recommendation on whether to update the benchmark.
+  let prompt = `You are a cost analysis expert. For each item below, analyze the three sections (CA, TOC, Time) independently and provide a recommendation for each on whether to update the benchmark.
 
 ITEMS:
 `;
@@ -435,20 +457,25 @@ ${index + 1}. Product: ${item.productName} (${item.productionId})
 
   prompt += `
 
-For each item, provide your recommendation in the following JSON format as an array of objects. Do not include any other text or explanations outside of the JSON.
+For each item, provide your recommendation in the following JSON format as an array of objects. Do not include any other text or explanations outside of the JSON. Ensure you include the productionId for each item exactly as it was provided.
 
 [
   {
-    "status": "update" or "no_need",
-    "decisionNotes": "Your brief, overall analysis and reasoning for the entire item here (max 50 words)."
+    "productionId": "The productionId of the item",
+    "ca_status": "update" or "no_need",
+    "ca_notes": "Brief reasoning for CA recommendation (max 30 words).",
+    "toc_status": "update" or "no_need",
+    "toc_notes": "Brief reasoning for TOC recommendation (max 30 words).",
+    "time_status": "update" or "no_need",
+    "time_notes": "Brief reasoning for Time recommendation (max 30 words)."
   }
 ]
 
 Guidelines:
-- Base your decision on whether the 'Proposed Benchmark' values are a realistic reflection of recent costs across all three sections.
+- For each section (CA, TOC, Time), base your decision on whether the 'Proposed Benchmark' is a realistic reflection of recent costs.
 - Use 'Human Notes' for context.
-- If proposed benchmarks align with recent trends, status should be 'update'.
-- If deviations are insignificant or data is inconsistent, status should be 'no_need'.`;
+- If a proposed benchmark aligns with recent trends, its status should be 'update'.
+- If a deviation is insignificant or data is inconsistent, its status should be 'no_need'.`;
 
   return prompt;
 }
@@ -469,7 +496,7 @@ function callOpenAI(prompt) {
         content: prompt
       }
     ],
-    max_tokens: 2000,
+    max_tokens: 8000,
     temperature: 0.3
   };
 
@@ -497,29 +524,55 @@ function callOpenAI(prompt) {
  */
 function parseAIResponse(aiResponse, items) {
   try {
-    const cleanedResponse = aiResponse.replace(/```json\n?/g, '').replace(/\n?```/g, '');
-    const recommendations = JSON.parse(cleanedResponse);
+    // Use a regex to find the JSON array, and trim whitespace
+    const match = aiResponse.trim().match(/\[.*\]/s);
+    
+    if (!match) {
+      throw new Error("Could not find JSON array in AI response via regex.");
+    }
+    
+    const jsonString = match[0];
+    const recommendations = JSON.parse(jsonString);
 
     if (!Array.isArray(recommendations)) {
       throw new Error("AI response is not a JSON array.");
     }
     
-    return items.map((item, index) => {
-      const aiRec = recommendations[index] || {};
-      
-      return {
-        index: item.originalIndex, // Use the original index passed from the client
-        status: aiRec.status || 'no_need',
-        decisionNotes: aiRec.decisionNotes || 'AI response format error.'
-      };
-    });
+    // Create a lookup map from productionId to original index
+    const idToIndexMap = items.reduce((map, item) => {
+      map[item.productionId] = item.originalIndex; // item.originalIndex was passed from the client
+      return map;
+    }, {});
+    
+    // Map recommendations back using productionId
+    return recommendations.map(aiRec => {
+      const originalIndex = idToIndexMap[aiRec.productionId];
+      if (originalIndex !== undefined) {
+        return {
+          index: originalIndex,
+          ca_status: aiRec.ca_status || 'no_need',
+          ca_notes: aiRec.ca_notes || 'AI response format error.',
+          toc_status: aiRec.toc_status || 'no_need',
+          toc_notes: aiRec.toc_notes || 'AI response format error.',
+          time_status: aiRec.time_status || 'no_need',
+          time_notes: aiRec.time_notes || 'AI response format error.'
+        };
+      }
+      return null; // Or handle cases where productionId doesn't match
+    }).filter(rec => rec !== null); // Filter out any nulls
     
   } catch (error) {
-    console.error('Error parsing AI response:', error, 'Raw response:', aiResponse);
+    const errorMessage = `Error parsing AI response with productionId: ${error.message}. Raw response: ${aiResponse}`;
+    logError(errorMessage);
+    console.error(errorMessage); // Keep console.error as well
     return items.map(item => ({
       index: item.originalIndex,
-      status: 'no_need',
-      decisionNotes: 'Error parsing AI response. Please check raw response.'
+      ca_status: 'no_need',
+      ca_notes: 'Error parsing AI response. See Logs sheet for details.',
+      toc_status: 'no_need',
+      toc_notes: '',
+      time_status: 'no_need',
+      time_notes: ''
     }));
   }
 }
